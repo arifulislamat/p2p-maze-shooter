@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>P2P Maze Shooter — Browser Multiplayer Game</title>
+    <meta
+      name="description"
+      content="A real-time peer-to-peer multiplayer shooter built with vanilla JavaScript and WebRTC. No server, no install — just open and play."
+    />
+    <meta name="author" content="Ariful Islam" />
+    <meta
+      name="keywords"
+      content="p2p, webrtc, multiplayer, shooter, browser game, vanilla javascript, canvas"
+    />
+    <meta property="og:title" content="P2P Maze Shooter" />
+    <meta
+      property="og:description"
+      content="Real-time peer-to-peer multiplayer shooter in the browser. Zero dependencies."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#0a0a1a" />
+    <!-- Inline SVG favicon — no external file needed -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔</text></svg>"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ===== Lobby Screen ===== -->
+    <div id="lobby">
+      <h1>⚔ P2P Maze Shooter</h1>
+      <p>A peer-to-peer browser battle game</p>
+
+      <!-- Maze Selector -->
+      <div id="maze-selector">
+        <h3>SELECT MAP</h3>
+        <div id="maze-grid"></div>
+      </div>
+
+      <div class="lobby-buttons">
+        <button class="btn btn-secondary" onclick="Game.showOnlineUI('host')">
+          CREATE GAME ROOM
+        </button>
+        <button class="btn btn-secondary" onclick="Game.showOnlineUI('join')">
+          JOIN GAME ROOM
+        </button>
+      </div>
+
+      <p class="maze-rotation-note">
+        Maps rotate randomly every minutes during gameplay
+      </p>
+
+      <p class="author-credit">
+        Made by
+        <a href="https://arifulislamat.com" target="_blank" rel="noopener"
+          >Ariful Islam</a
+        >
+      </p>
+    </div>
+
+    <!-- Maze selector builder script (runs after constants.js) -->
+    <script>
+      function buildMazeSelector() {
+        const grid = document.getElementById("maze-grid");
+        if (!grid) return;
+        grid.innerHTML = "";
+        MAZE_KEYS.forEach((key, i) => {
+          const maze = MAZES[key];
+          const div = document.createElement("div");
+          div.className = "maze-option" + (i === 0 ? " selected" : "");
+          div.dataset.maze = key;
+          div.onclick = () => {
+            Game.selectMaze(key);
+            document
+              .querySelectorAll(".maze-option")
+              .forEach((el) => el.classList.remove("selected"));
+            div.classList.add("selected");
+          };
+
+          // Mini preview canvas
+          const preview = document.createElement("canvas");
+          const pw = 105,
+            ph = 75;
+          preview.width = pw;
+          preview.height = ph;
+          const pctx = preview.getContext("2d");
+          const cw = pw / maze.data[0].length;
+          const ch = ph / maze.data.length;
+          maze.data.forEach((row, r) => {
+            row.forEach((cell, c) => {
+              if (cell === 1) pctx.fillStyle = "#3a3a5c";
+              else if (cell === 2) pctx.fillStyle = "#00d4ff";
+              else if (cell === 3) pctx.fillStyle = "#ff4444";
+              else if (cell === 4) pctx.fillStyle = "#44ff44";
+              else if (cell === 5) pctx.fillStyle = "#ffaa00";
+              else pctx.fillStyle = "#0a0a1a";
+              pctx.fillRect(c * cw, r * ch, cw, ch);
+            });
+          });
+
+          const name = document.createElement("div");
+          name.className = "maze-name";
+          name.textContent = maze.name;
+
+          const desc = document.createElement("div");
+          desc.className = "maze-desc";
+          desc.textContent = maze.desc;
+
+          div.appendChild(preview);
+          div.appendChild(name);
+          div.appendChild(desc);
+          grid.appendChild(div);
+        });
+      }
+      // Build after DOM + constants are ready
+      window.addEventListener("DOMContentLoaded", () => {
+        setTimeout(buildMazeSelector, 0);
+
+        const params = new URLSearchParams(window.location.search);
+        const room = params.get("room");
+        if (room) {
+          setTimeout(() => {
+            Game.showOnlineUI("join");
+            const input = document.getElementById("roomCodeInput");
+            if (input) input.value = room.toUpperCase().trim();
+          }, 0);
+        }
+      });
+    </script>
+
+    <!-- ===== Connection UI (Online Play) ===== -->
+    <div id="connectionUI">
+      <!-- Host Panel -->
+      <div id="hostUI" style="display: none">
+        <h3>CREATE GAME ROOM</h3>
+        <p class="online-subtitle">Share this room code with your opponent:</p>
+        <div class="room-code" id="roomCode">------</div>
+        <a
+          id="shareLink"
+          href="#"
+          target="_blank"
+          rel="noopener"
+          style="display: none"
+        ></a>
+        <div class="host-actions">
+          <button
+            class="btn btn-primary btn-copy"
+            onclick="Game.copyShareLink()"
+          >
+            📋 Copy Invite Link
+          </button>
+        </div>
+        <div class="host-divider"></div>
+        <p id="connectionStatus" class="waiting-pulse">Creating room...</p>
+        <div style="margin-top: 2rem">
+          <button class="btn btn-secondary" onclick="Game.cancelOnline()">
+            ✕ Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Join Panel -->
+      <div id="joinUI" style="display: none">
+        <h3>JOIN GAME ROOM</h3>
+        <p class="online-subtitle">Enter the room code:</p>
+        <input
+          type="text"
+          id="roomCodeInput"
+          placeholder="ROOM CODE"
+          maxlength="6"
+          autocomplete="off"
+          onkeydown="if (event.key === 'Enter') Game.joinOnlineGame();"
+        />
+        <div class="join-buttons">
+          <button class="btn btn-primary" onclick="Game.joinOnlineGame()">
+            Connect
+          </button>
+          <button class="btn btn-secondary" onclick="Game.cancelOnline()">
+            ✕ Cancel
+          </button>
+        </div>
+        <p id="joinStatus"></p>
+      </div>
+    </div>
+
+    <!-- ===== Game Canvas ===== -->
+    <div id="gameContainer">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <!-- ===== Controls Help ===== -->
+    <div id="controls-help" style="display: none"></div>
+
+    <!-- ===== Scripts (order matters) ===== -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+    <script src="constants.js"></script>
+    <script src="physics.js"></script>
+    <script src="renderer.js"></script>
+    <script src="network.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>

@@ -1,0 +1,419 @@
+/* ===========================================
+   P2P Shooter POC — Styles
+   Retro Maze Combat — Unified Orange/Dark Theme
+   =========================================== */
+
+:root {
+  /* Backgrounds (darkest to lightest) */
+  --bg-deep: #07070f;
+  --bg-dark: #0a0a1a;
+  --bg-panel: #0d0d1a;
+  --bg-elevated: #1a1a2e;
+
+  /* Primary Accent — Orange */
+  --accent: #ff6b00;
+  --accent-hover: #cc5500;
+  --accent-glow: rgba(255, 107, 0, 0.3);
+  --accent-dim: rgba(255, 107, 0, 0.08);
+
+  /* Borders */
+  --border-dark: #2a2a4a;
+  --border-subtle: #1a1a2e;
+
+  /* Text */
+  --text-primary: #c8c8e0;
+  --text-muted: #888;
+  --text-dim: #555;
+  --text-dark: #333;
+
+  /* Player Colors */
+  --p1: #00d4ff;
+  --p2: #ff4444;
+
+  /* Status */
+  --status-ok: #2ecc71;
+  --status-error: #e74c3c;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Courier New", Courier, monospace;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* CRT scanline overlay */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.06) 0px,
+    rgba(0, 0, 0, 0.06) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  text-shadow:
+    0 0 20px var(--accent-glow),
+    0 0 40px rgba(255, 107, 0, 0.15);
+}
+
+/* ---- Lobby ---- */
+#lobby {
+  text-align: center;
+  padding: 2rem;
+}
+
+#lobby p {
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.lobby-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 0.75rem 2rem;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1rem;
+  font-weight: bold;
+  border: 2px solid;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-secondary:hover {
+  background: var(--accent);
+  color: #000;
+}
+
+.btn-small {
+  padding: 0.5rem 1.5rem;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+  opacity: 0.7;
+  transition:
+    opacity 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.btn-small:hover {
+  opacity: 1;
+}
+
+/* ---- Connection UI ---- */
+#connectionUI {
+  display: none;
+  text-align: center;
+  padding: 2rem;
+}
+
+#connectionUI h3 {
+  font-size: 0.85rem;
+  color: var(--accent);
+  letter-spacing: 3px;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px var(--accent-dim);
+}
+
+.online-subtitle {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+#connectionUI .room-code {
+  font-size: 2.5rem;
+  color: var(--accent);
+  letter-spacing: 8px;
+  margin: 1.2rem 0;
+  user-select: all;
+  text-shadow: 0 0 14px var(--accent-glow);
+  font-weight: bold;
+}
+
+#connectionUI input {
+  padding: 0.75rem 1rem;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1.2rem;
+  background: var(--bg-panel);
+  border: 2px solid var(--accent);
+  color: var(--text-primary);
+  text-align: center;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  width: 280px;
+  outline: none;
+}
+
+#connectionUI input:focus {
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+#connectionUI input::placeholder {
+  color: var(--text-dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* Share link removed — using copy button only */\n", "oldString": ".share-link {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 0.5rem;\n  margin-bottom: 0.5rem;\n  flex-wrap: wrap;\n}\n\n.share-link a {\n  color: var(--accent);\n  font-size: 0.75rem;\n  letter-spacing: 1px;\n  text-decoration: none;\n  max-width: 320px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  border-bottom: 1px dashed var(--accent-dim);\n}\n\n.share-link a:hover {\n  color: #000;\n  background: var(--accent);\n  padding: 0 0.25rem;\n}
+
+.host-actions {
+  display: flex;
+  justify-content: center;
+  margin: 1.2rem 0;
+}
+
+.btn-copy {
+  font-size: 0.85rem;
+  padding: 0.6rem 1.5rem;
+  letter-spacing: 2px;
+}
+
+.host-divider {
+  width: 60px;
+  height: 1px;
+  background: var(--accent-dim);
+  margin: 1.2rem auto;
+}
+
+.waiting-pulse {
+  animation: waitPulse 2s ease-in-out infinite;
+}
+
+@keyframes waitPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.join-buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+#connectionStatus,
+#joinStatus {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  min-height: 1.2em;
+}
+
+.status-connected {
+  color: var(--status-ok) !important;
+}
+
+.status-error {
+  color: var(--status-error) !important;
+}
+
+/* ---- Canvas Wrapper ---- */
+#gameContainer {
+  display: none;
+  position: relative;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem 0;
+}
+
+canvas {
+  border: 3px solid var(--border-dark);
+  display: block;
+  background: var(--bg-dark);
+}
+
+/* ---- Overlay (countdown, game over) ---- */
+#overlay {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+#overlay.active {
+  display: flex;
+  pointer-events: auto;
+}
+
+#overlay h2 {
+  font-size: 4rem;
+  color: #fff;
+}
+
+#overlay p {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  margin-top: 1rem;
+}
+
+#overlay .btn {
+  margin-top: 1.5rem;
+  pointer-events: auto;
+}
+
+/* ---- Maze Selector ---- */
+#maze-selector {
+  margin: 1.5rem 0;
+}
+
+#maze-selector h3 {
+  font-size: 0.75rem;
+  color: var(--accent);
+  letter-spacing: 3px;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px var(--accent-dim);
+}
+
+#maze-grid {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 720px;
+}
+
+.maze-option {
+  background: var(--bg-panel);
+  border: 2px solid var(--border-dark);
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  width: 120px;
+}
+
+.maze-option:hover {
+  border-color: var(--accent);
+}
+
+.maze-option.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.maze-option canvas {
+  display: block;
+  width: 105px;
+  height: 75px;
+  margin-bottom: 0.4rem;
+}
+
+.maze-name {
+  font-size: 0.55rem;
+  color: var(--accent);
+  letter-spacing: 1px;
+  margin-bottom: 0.2rem;
+  font-weight: bold;
+}
+
+.maze-desc {
+  font-size: 0.5rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.maze-rotation-note {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  margin-top: 1rem;
+  font-style: italic;
+}
+
+.author-credit {
+  font-size: 0.7rem;
+  color: #666;
+  margin-top: 1.5rem;
+}
+
+.author-credit a {
+  color: #00d4ff;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.author-credit a:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+/* ---- Controls Help ---- */
+#controls-help {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+#controls-help span {
+  margin: 0 1rem;
+}
+
+.key {
+  display: inline-block;
+  background: var(--bg-panel);
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  color: #ccc;
+}
