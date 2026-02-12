@@ -454,15 +454,22 @@ const Game = (() => {
         continue;
       }
 
+      // Validate bullet ownership — discard corrupted bullets
+      if (b.owner !== 1 && b.owner !== 2) {
+        bullets.splice(i, 1);
+        continue;
+      }
+
       // Check hit against players (can't hit own player)
       const target = b.owner === 1 ? p2 : p1;
+      const shooter = b.owner === 1 ? p1 : p2;
       if (Physics.bulletHitsPlayer(b, target)) {
         target.health -= 1;
         bullets.splice(i, 1);
 
         // Check if killed
         if (target.health <= 0) {
-          handlePlayerDeath(target, b.owner === 1 ? p1 : p2);
+          handlePlayerDeath(target, shooter);
         }
         continue;
       }
