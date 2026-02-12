@@ -17,15 +17,16 @@ Thanks for your interest in contributing! This is a vanilla JS project with zero
 
 ## Architecture Quick Reference
 
-| File | Responsibility |
-|------|---------------|
-| `constants.js` | Config, maze data, `parseMaze()` |
-| `physics.js` | Collision detection |
-| `renderer.js` | Canvas drawing, HUD, effects |
-| `network.js` | PeerJS wrapper, connection lifecycle |
-| `game.js` | Game loop, state machine, input handling |
-| `styles.css` | Lobby and UI styles |
-| `index.html` | Entry point, lobby HTML |
+| File           | Responsibility                           |
+| -------------- | ---------------------------------------- |
+| `constants.js` | Config, maze data, `parseMaze()`         |
+| `sound.js`     | Procedural audio (Web Audio API.         |
+| `physics.js`   | Collision detection                      |
+| `renderer.js`  | Canvas drawing, HUD, effects             |
+| `network.js`   | PeerJS wrapper, connection lifecycle     |
+| `game.js`      | Game loop, state machine, input handling |
+| `styles.css`   | Lobby and UI styles                      |
+| `index.html`   | Entry point, lobby HTML                  |
 
 ## How to Contribute
 

@@ -202,6 +202,7 @@ const Game = (() => {
 
   function explodeBomb(bomb) {
     explosions.push({ x: bomb.x, y: bomb.y, startTime: Date.now() });
+    Sound.play("explosion", bomb.x, bomb.y);
 
     // Damage players in blast radius
     [p1, p2].forEach((player) => {
@@ -258,6 +259,7 @@ const Game = (() => {
         if (dist <= ZOMBIE_HITBOX_RADIUS + PLAYER_SIZE / 2) {
           // Freeze the player
           player.freezeTimer = ZOMBIE_FREEZE_MS;
+          Sound.play("freeze", player.x, player.y);
           // Remove this zombie on contact
           zombies.splice(i, 1);
         }
@@ -433,6 +435,7 @@ const Game = (() => {
       dy: player.dir.dy * BULLET_SPEED,
       owner: player.id,
     });
+    Sound.play("shoot", player.x, player.y);
   }
 
   // ---- Update Bullets ----
@@ -466,6 +469,7 @@ const Game = (() => {
       if (Physics.bulletHitsPlayer(b, target)) {
         target.health -= 1;
         bullets.splice(i, 1);
+        Sound.play("hit", target.x, target.y);
 
         // Check if killed
         if (target.health <= 0) {
@@ -482,11 +486,13 @@ const Game = (() => {
     deadPlayer.respawnTimer = RESPAWN_TIME;
     deadPlayer.killedBy = killer; // remember killer for smart respawn
     killer.score += 1;
+    Sound.play("death", deadPlayer.x, deadPlayer.y);
 
     // Check win
     if (killer.score >= WIN_SCORE) {
       gameState = STATE.GAME_OVER;
       winner = killer.id;
+      Sound.play("victory", killer.x, killer.y);
     }
   }
 
@@ -533,6 +539,7 @@ const Game = (() => {
     player.alive = true;
     player.respawnTimer = 0;
     player.killedBy = null; // clear killer reference
+    Sound.play("respawn", player.x, player.y);
   }
 
   // ---- Maze Rotation (cycle through all mazes) ----
@@ -565,6 +572,7 @@ const Game = (() => {
     const nextKey = mazeOrder[mazesPlayed];
     switchMaze(nextKey);
     Renderer.showMazeAnnouncement(activeMaze.name);
+    Sound.play("mazeChange", CONFIG.CANVAS.WIDTH / 2, CONFIG.CANVAS.HEIGHT / 2);
   }
 
   function handleMatchTimeout() {
@@ -579,6 +587,7 @@ const Game = (() => {
       if (winner === 0) isDraw = true;
     }
     gameState = STATE.GAME_OVER;
+    Sound.play("gameOver", CONFIG.CANVAS.WIDTH / 2, CONFIG.CANVAS.HEIGHT / 2);
   }
 
   function switchMaze(mazeKey) {
@@ -626,11 +635,29 @@ const Game = (() => {
     countdownTimer = Date.now();
   }
 
+  let prevCountdownValue = -1;
+
   function updateCountdown() {
     const elapsed = Date.now() - countdownTimer;
     countdownValue = COUNTDOWN_DURATION - Math.floor(elapsed / 1000);
 
+    // Play countdown sounds only on value change
+    if (countdownValue !== prevCountdownValue) {
+      prevCountdownValue = countdownValue;
+      if (countdownValue > 0 && countdownValue <= COUNTDOWN_DURATION) {
+        Sound.play(
+          "countdown",
+          CONFIG.CANVAS.WIDTH / 2,
+          CONFIG.CANVAS.HEIGHT / 2,
+        );
+      }
+    }
+
     if (countdownValue < 0) {
+      if (prevCountdownValue >= 0) {
+        Sound.play("go", CONFIG.CANVAS.WIDTH / 2, CONFIG.CANVAS.HEIGHT / 2);
+        prevCountdownValue = -1;
+      }
       gameState = STATE.PLAYING;
     }
   }
@@ -729,6 +756,7 @@ const Game = (() => {
       matchTimeLeft,
       mazesPlayed,
       isDraw,
+      sounds: Sound.flushPending(),
     });
   }
 
@@ -779,6 +807,11 @@ const Game = (() => {
       displayMatchTimeLeft = data.matchTimeLeft;
     if (data.mazesPlayed !== undefined) mazesPlayed = data.mazesPlayed;
     if (data.isDraw !== undefined) isDraw = data.isDraw;
+
+    // Play sound events from host
+    if (data.sounds && data.sounds.length > 0) {
+      Sound.playRemote(data.sounds);
+    }
   }
 
   // Route incoming network data
