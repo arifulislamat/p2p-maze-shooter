@@ -39,15 +39,15 @@ const Sound = (() => {
   function updateMuteButton() {
     const btn = document.getElementById("muteBtn");
     if (!btn) return;
-    const iconOn = btn.querySelector('#icon-sound-on');
-    const iconOff = btn.querySelector('#icon-sound-off');
+    const iconOn = btn.querySelector("#icon-sound-on");
+    const iconOff = btn.querySelector("#icon-sound-off");
     if (iconOn && iconOff) {
       if (muted) {
-        iconOn.style.display = 'none';
-        iconOff.style.display = '';
+        iconOn.style.display = "none";
+        iconOff.style.display = "";
       } else {
-        iconOn.style.display = '';
-        iconOff.style.display = 'none';
+        iconOn.style.display = "";
+        iconOff.style.display = "none";
       }
     }
   }
@@ -94,7 +94,11 @@ const Sound = (() => {
     const out = createOutput(pan, 0.25);
     if (!out) return;
     const t = audioCtx.currentTime;
-    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.1, audioCtx.sampleRate);
+    const buf = audioCtx.createBuffer(
+      1,
+      audioCtx.sampleRate * 0.1,
+      audioCtx.sampleRate,
+    );
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     const src = audioCtx.createBufferSource();
@@ -134,7 +138,11 @@ const Sound = (() => {
     // Noise burst
     const noiseOut = createOutput(pan, 0.35);
     if (!noiseOut) return;
-    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.3, audioCtx.sampleRate);
+    const buf = audioCtx.createBuffer(
+      1,
+      audioCtx.sampleRate * 0.3,
+      audioCtx.sampleRate,
+    );
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     const src = audioCtx.createBufferSource();
@@ -236,7 +244,11 @@ const Sound = (() => {
     const out = createOutput(pan, 0.2);
     if (!out) return;
     const t = audioCtx.currentTime;
-    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.4, audioCtx.sampleRate);
+    const buf = audioCtx.createBuffer(
+      1,
+      audioCtx.sampleRate * 0.4,
+      audioCtx.sampleRate,
+    );
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     const src = audioCtx.createBufferSource();
