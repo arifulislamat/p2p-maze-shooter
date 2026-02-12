@@ -58,40 +58,43 @@ const Game = (() => {
   let lastResync = 0;
 
   // ---- Get spawn position from active maze ----
-  // Ensure players spawn diagonally opposite
-  let chosenP1Spawn = null;
-
-  function assignSpawnHalves() {
-    chosenP1Spawn = null; // reset each maze/restart
-  }
+  // Deterministic corner-based spawns that rotate each maze.
+  // Even mazes (0, 2, 4…): P1 → top-right, P2 → bottom-left
+  // Odd  mazes (1, 3, 5…): P1 → bottom-left, P2 → top-right
+  // Both host and guest compute the same result — no network sync needed.
 
   function getSpawn(playerId) {
-    const spawns = playerId === 1 ? activeMaze.p1Spawns : activeMaze.p2Spawns;
-    if (spawns.length === 0) return { x: 100, y: 100 };
+    const allSpawns = [...activeMaze.p1Spawns, ...activeMaze.p2Spawns];
+    if (allSpawns.length < 2) return allSpawns[0] || { x: 100, y: 100 };
 
+    // Find the spawn closest to top-right and bottom-left corners
+    const mazeW = MAZE_COLS * CELL_W;
+    const mazeH = MAZE_ROWS * CELL_H;
+    let topRight = allSpawns[0],
+      topRightDist = Infinity;
+    let bottomLeft = allSpawns[0],
+      bottomLeftDist = Infinity;
+
+    for (const s of allSpawns) {
+      const dTR = (s.x - mazeW) * (s.x - mazeW) + s.y * s.y;
+      const dBL = s.x * s.x + (s.y - mazeH) * (s.y - mazeH);
+      if (dTR < topRightDist) {
+        topRightDist = dTR;
+        topRight = s;
+      }
+      if (dBL < bottomLeftDist) {
+        bottomLeftDist = dBL;
+        bottomLeft = s;
+      }
+    }
+
+    const swapped = mazesPlayed % 2 === 1;
     if (playerId === 1) {
-      // P1 picks a random spawn
-      const s = spawns[Math.floor(Math.random() * spawns.length)];
-      chosenP1Spawn = { x: s.x, y: s.y };
+      const s = swapped ? bottomLeft : topRight;
       return { x: s.x, y: s.y };
     } else {
-      // P2 picks the spawn farthest from P1
-      if (!chosenP1Spawn) {
-        const s = spawns[Math.floor(Math.random() * spawns.length)];
-        return { x: s.x, y: s.y };
-      }
-      let best = spawns[0];
-      let bestDist = 0;
-      for (const s of spawns) {
-        const dx = s.x - chosenP1Spawn.x;
-        const dy = s.y - chosenP1Spawn.y;
-        const dist = dx * dx + dy * dy;
-        if (dist > bestDist) {
-          bestDist = dist;
-          best = s;
-        }
-      }
-      return { x: best.x, y: best.y };
+      const s = swapped ? topRight : bottomLeft;
+      return { x: s.x, y: s.y };
     }
   }
 
@@ -113,7 +116,6 @@ const Game = (() => {
     };
   }
 
-  assignSpawnHalves();
   let p1 = createPlayer(1);
   let p2 = createPlayer(2);
   let bullets = [];
@@ -452,15 +454,22 @@ const Game = (() => {
         continue;
       }
 
+      // Validate bullet ownership — discard corrupted bullets
+      if (b.owner !== 1 && b.owner !== 2) {
+        bullets.splice(i, 1);
+        continue;
+      }
+
       // Check hit against players (can't hit own player)
       const target = b.owner === 1 ? p2 : p1;
+      const shooter = b.owner === 1 ? p1 : p2;
       if (Physics.bulletHitsPlayer(b, target)) {
         target.health -= 1;
         bullets.splice(i, 1);
 
         // Check if killed
         if (target.health <= 0) {
-          handlePlayerDeath(target, b.owner === 1 ? p1 : p2);
+          handlePlayerDeath(target, shooter);
         }
         continue;
       }
@@ -471,6 +480,7 @@ const Game = (() => {
   function handlePlayerDeath(deadPlayer, killer) {
     deadPlayer.alive = false;
     deadPlayer.respawnTimer = RESPAWN_TIME;
+    deadPlayer.killedBy = killer; // remember killer for smart respawn
     killer.score += 1;
 
     // Check win
@@ -485,14 +495,36 @@ const Game = (() => {
       if (!player.alive && player.respawnTimer > 0) {
         player.respawnTimer -= dt;
         if (player.respawnTimer <= 0) {
-          respawnPlayer(player);
+          respawnPlayer(player, player.killedBy || null);
         }
       }
     });
   }
 
-  function respawnPlayer(player) {
-    const spawn = getSpawn(player.id);
+  function respawnPlayer(player, killer) {
+    // Collect all spawn points from both pools
+    const allSpawns = [...activeMaze.p1Spawns, ...activeMaze.p2Spawns];
+    let spawn;
+
+    if (killer && allSpawns.length > 1) {
+      // Pick the spawn point farthest from the killer's current position
+      let best = allSpawns[0];
+      let bestDist = 0;
+      for (const s of allSpawns) {
+        const dx = s.x - killer.x;
+        const dy = s.y - killer.y;
+        const dist = dx * dx + dy * dy;
+        if (dist > bestDist) {
+          bestDist = dist;
+          best = s;
+        }
+      }
+      spawn = best;
+    } else {
+      // Fallback: use original per-player spawn logic
+      spawn = getSpawn(player.id);
+    }
+
     player.x = spawn.x;
     player.y = spawn.y;
     player.dir =
@@ -500,6 +532,7 @@ const Game = (() => {
     player.health = PLAYER_HEALTH;
     player.alive = true;
     player.respawnTimer = 0;
+    player.killedBy = null; // clear killer reference
   }
 
   // ---- Maze Rotation (cycle through all mazes) ----
@@ -551,10 +584,8 @@ const Game = (() => {
   function switchMaze(mazeKey) {
     activeMaze = parseMaze(mazeKey);
     selectedMazeKey = mazeKey;
+    Renderer.invalidateMazeCache();
     mazeRotationStart = Date.now();
-
-    // Re-randomize spawn halves for the new maze
-    assignSpawnHalves();
 
     // Respawn both players at new maze spawns, keep scores
     const spawn1 = getSpawn(1);
@@ -606,7 +637,6 @@ const Game = (() => {
 
   // ---- Game Restart ----
   function restartGame() {
-    assignSpawnHalves();
     p1 = createPlayer(1);
     p2 = createPlayer(2);
     bullets = [];
@@ -621,6 +651,7 @@ const Game = (() => {
     mazesPlayed = 0;
     selectedMazeKey = mazeOrder[0];
     activeMaze = parseMaze(selectedMazeKey);
+    Renderer.invalidateMazeCache();
     mazeRotationStart = Date.now();
     matchStartTime = Date.now();
     lastResync = Date.now();
@@ -655,6 +686,7 @@ const Game = (() => {
 
     Network.send({
       type: fullSync ? "state_sync" : "state",
+      mazeRotationStart: mazeRotationStart,
       p1: {
         x: p1.x,
         y: p1.y,
@@ -706,8 +738,13 @@ const Game = (() => {
     if (data.mazeKey && data.mazeKey !== selectedMazeKey) {
       activeMaze = parseMaze(data.mazeKey);
       selectedMazeKey = data.mazeKey;
-      mazeRotationStart = Date.now();
+      Renderer.invalidateMazeCache();
       Renderer.showMazeAnnouncement(activeMaze.name);
+    }
+
+    // Sync maze rotation timestamp from host (avoids local Date.now() desync)
+    if (data.mazeRotationStart !== undefined) {
+      mazeRotationStart = data.mazeRotationStart;
     }
 
     // Apply player states
@@ -750,6 +787,11 @@ const Game = (() => {
     if (data.type === "config") {
       selectedMazeKey = data.mazeKey;
       activeMaze = parseMaze(data.mazeKey);
+      Renderer.invalidateMazeCache();
+      // Use host's maze order so rotation and spawns stay in sync
+      if (data.mazeOrder) {
+        mazeOrder = data.mazeOrder;
+      }
       startOnlineGame(false);
       return;
     }
@@ -860,11 +902,16 @@ const Game = (() => {
           document.getElementById("connectionStatus").className =
             "status-connected";
 
-          // Send config to guest
-          Network.send({ type: "config", mazeKey: selectedMazeKey });
-
-          // Start game as host after brief delay
-          setTimeout(() => startOnlineGame(true), 500);
+          // Start game as host, then send config to guest
+          setTimeout(() => {
+            startOnlineGame(true);
+            // Send maze order so guest computes same deterministic spawns
+            Network.send({
+              type: "config",
+              mazeKey: selectedMazeKey,
+              mazeOrder: mazeOrder,
+            });
+          }, 500);
         },
         onData: handleNetworkData,
         onDisconnected: handleDisconnect,
@@ -933,6 +980,14 @@ const Game = (() => {
     if (gameMode === "online-guest") {
       // Guest: only send input, state arrives via onData callback
       sendLocalInput();
+      // Locally interpolate respawn timers for smooth display (host controls alive state)
+      if (gameState === STATE.PLAYING) {
+        [p1, p2].forEach((player) => {
+          if (!player.alive && player.respawnTimer > 0) {
+            player.respawnTimer = Math.max(0, player.respawnTimer - dt);
+          }
+        });
+      }
     } else {
       // Host: run all physics
       if (gameState === STATE.COUNTDOWN) {
@@ -1092,6 +1147,7 @@ const Game = (() => {
     if (MAZES[mazeKey]) {
       selectedMazeKey = mazeKey;
       activeMaze = parseMaze(mazeKey);
+      Renderer.invalidateMazeCache();
       highlightSelectedMaze();
     }
   }
@@ -1125,10 +1181,14 @@ const Game = (() => {
   function startOnlineGame(isHost) {
     gameMode = isHost ? "online-host" : "online-guest";
     isDisconnected = false;
-    mazeOrder = shuffleMazeOrder();
+    // Only host shuffles maze order; guest receives it via config message
+    if (isHost) {
+      mazeOrder = shuffleMazeOrder();
+    }
     mazesPlayed = 0;
     selectedMazeKey = mazeOrder[0];
     activeMaze = parseMaze(selectedMazeKey);
+    Renderer.invalidateMazeCache();
     mazeRotationStart = Date.now();
     matchStartTime = Date.now();
 
@@ -1142,7 +1202,6 @@ const Game = (() => {
     resizeCanvas();
 
     // Create players
-    assignSpawnHalves();
     p1 = createPlayer(1);
     p2 = createPlayer(2);
     bullets = [];

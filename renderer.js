@@ -36,9 +36,14 @@ const Renderer = (() => {
   };
 
   let ctx = null;
+  let mazeCache = null;
 
   function init(canvasCtx) {
     ctx = canvasCtx;
+  }
+
+  function invalidateMazeCache() {
+    mazeCache = null;
   }
 
   // ---- Background & Arena ----
@@ -49,7 +54,8 @@ const Renderer = (() => {
   }
 
   // ---- Draw Grid Maze (retro style matching maze.jsx) ----
-  function drawMaze() {
+  // Render maze to a given 2D context (used for both live and cache)
+  function drawMazeToContext(target) {
     const grid = activeMaze.grid;
 
     // Pass 1: Draw all cell backgrounds + grid lines on every cell
@@ -61,93 +67,107 @@ const Renderer = (() => {
 
         if (cell === CELL_WALL) {
           // Wall tile — retro depth effect
-          ctx.fillStyle = "#2d2d4a";
-          ctx.fillRect(x, y, CELL_W, CELL_H);
+          target.fillStyle = "#2d2d4a";
+          target.fillRect(x, y, CELL_W, CELL_H);
 
           // Outer border (bright edge)
-          ctx.strokeStyle = "#4a4a6a";
-          ctx.lineWidth = 1;
-          ctx.strokeRect(x + 0.5, y + 0.5, CELL_W - 1, CELL_H - 1);
+          target.strokeStyle = "#4a4a6a";
+          target.lineWidth = 1;
+          target.strokeRect(x + 0.5, y + 0.5, CELL_W - 1, CELL_H - 1);
 
           // Inner border detail (subtle inner rectangle for depth)
-          ctx.strokeStyle = "rgba(100, 100, 180, 0.2)";
-          ctx.lineWidth = 1;
-          ctx.strokeRect(x + 3, y + 3, CELL_W - 6, CELL_H - 6);
+          target.strokeStyle = "rgba(100, 100, 180, 0.2)";
+          target.lineWidth = 1;
+          target.strokeRect(x + 3, y + 3, CELL_W - 6, CELL_H - 6);
 
           // Inset shadow simulation — darker edges on bottom-right
-          ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
-          ctx.fillRect(x + CELL_W - 3, y + 1, 3, CELL_H - 1); // right shadow
-          ctx.fillRect(x + 1, y + CELL_H - 3, CELL_W - 1, 3); // bottom shadow
+          target.fillStyle = "rgba(0, 0, 0, 0.15)";
+          target.fillRect(x + CELL_W - 3, y + 1, 3, CELL_H - 1); // right shadow
+          target.fillRect(x + 1, y + CELL_H - 3, CELL_W - 1, 3); // bottom shadow
 
           // Inset highlight — lighter edge on top-left
-          ctx.fillStyle = "rgba(100, 100, 160, 0.15)";
-          ctx.fillRect(x + 1, y + 1, 3, CELL_H - 2); // left highlight
-          ctx.fillRect(x + 1, y + 1, CELL_W - 2, 3); // top highlight
+          target.fillStyle = "rgba(100, 100, 160, 0.15)";
+          target.fillRect(x + 1, y + 1, 3, CELL_H - 2); // left highlight
+          target.fillRect(x + 1, y + 1, CELL_W - 2, 3); // top highlight
         } else if (cell === CELL_P1 || cell === CELL_P2) {
           // Spawn zones — render as plain path (no visual indicator)
-          ctx.fillStyle = COLORS.background;
-          ctx.fillRect(x, y, CELL_W, CELL_H);
+          target.fillStyle = COLORS.background;
+          target.fillRect(x, y, CELL_W, CELL_H);
         } else if (cell === CELL_ZOMBIE) {
           // Zombie cells render as plain path (dynamic zombies drawn separately)
-          ctx.fillStyle = COLORS.background;
-          ctx.fillRect(x, y, CELL_W, CELL_H);
+          target.fillStyle = COLORS.background;
+          target.fillRect(x, y, CELL_W, CELL_H);
         } else if (cell === CELL_BOMB) {
           // Bomb cells now render as plain path (dynamic bombs drawn separately)
-          ctx.fillStyle = COLORS.background;
-          ctx.fillRect(x, y, CELL_W, CELL_H);
+          target.fillStyle = COLORS.background;
+          target.fillRect(x, y, CELL_W, CELL_H);
         } else {
           // Path cell — dark background (already drawn by drawArena)
           // Still draw cell-specific bg so grid lines show properly
-          ctx.fillStyle = COLORS.background;
-          ctx.fillRect(x, y, CELL_W, CELL_H);
+          target.fillStyle = COLORS.background;
+          target.fillRect(x, y, CELL_W, CELL_H);
         }
 
         // Grid lines on EVERY cell (the subtle grid overlay)
-        ctx.strokeStyle = "#1a1a2e";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, CELL_W - 1, CELL_H - 1);
+        target.strokeStyle = "#1a1a2e";
+        target.lineWidth = 1;
+        target.strokeRect(x + 0.5, y + 0.5, CELL_W - 1, CELL_H - 1);
       }
     }
 
     // Arena border — dark outer border
-    ctx.strokeStyle = "#2a2a4a";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(1.5, 1.5, CANVAS_WIDTH - 3, CANVAS_HEIGHT - 3);
+    target.strokeStyle = "#2a2a4a";
+    target.lineWidth = 3;
+    target.strokeRect(1.5, 1.5, CANVAS_WIDTH - 3, CANVAS_HEIGHT - 3);
 
     // Orange glow corner accents (matching maze.jsx)
-    drawCornerAccent(0, 0, 1, 1); // top-left
-    drawCornerAccent(CANVAS_WIDTH, 0, -1, 1); // top-right
-    drawCornerAccent(0, CANVAS_HEIGHT, 1, -1); // bottom-left
-    drawCornerAccent(CANVAS_WIDTH, CANVAS_HEIGHT, -1, -1); // bottom-right
+    drawCornerAccentTo(target, 0, 0, 1, 1); // top-left
+    drawCornerAccentTo(target, CANVAS_WIDTH, 0, -1, 1); // top-right
+    drawCornerAccentTo(target, 0, CANVAS_HEIGHT, 1, -1); // bottom-left
+    drawCornerAccentTo(target, CANVAS_WIDTH, CANVAS_HEIGHT, -1, -1); // bottom-right
 
     // CRT scanline overlay (subtle horizontal lines)
-    drawScanlines();
+    drawScanlinesTo(target);
+  }
+
+  function drawMaze() {
+    if (!mazeCache) {
+      mazeCache = document.createElement("canvas");
+      mazeCache.width = CANVAS_WIDTH;
+      mazeCache.height = CANVAS_HEIGHT;
+      drawMazeToContext(mazeCache.getContext("2d"));
+    }
+    ctx.drawImage(mazeCache, 0, 0);
   }
 
   // ---- Orange Glow Corner Accents ----
-  function drawCornerAccent(cx, cy, dirX, dirY) {
+  function drawCornerAccentTo(target, cx, cy, dirX, dirY) {
     const len = RENDER_CONFIG.EFFECTS.CORNER_ACCENT_LEN;
-    ctx.strokeStyle = "#ff6b00";
-    ctx.lineWidth = 2;
-    ctx.globalAlpha = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy + dirY * len);
-    ctx.lineTo(cx, cy);
-    ctx.lineTo(cx + dirX * len, cy);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+    target.strokeStyle = "#ff6b00";
+    target.lineWidth = 2;
+    target.globalAlpha = 0.5;
+    target.beginPath();
+    target.moveTo(cx, cy + dirY * len);
+    target.lineTo(cx, cy);
+    target.lineTo(cx + dirX * len, cy);
+    target.stroke();
+    target.globalAlpha = 1;
   }
 
-  // ---- CRT Scanline Overlay ----
-  function drawScanlines() {
-    ctx.fillStyle = `rgba(0, 0, 0, ${RENDER_CONFIG.EFFECTS.SCANLINE_ALPHA})`;
-    for (
-      let y = 0;
-      y < CANVAS_HEIGHT;
-      y += RENDER_CONFIG.EFFECTS.SCANLINE_STEP
-    ) {
-      ctx.fillRect(0, y, CANVAS_WIDTH, 1);
-    }
+  // ---- CRT Scanline Pattern (pre-rendered, reused via pattern fill) ----
+  const scanlinePattern = (() => {
+    const c = document.createElement("canvas");
+    c.width = 1;
+    c.height = RENDER_CONFIG.EFFECTS.SCANLINE_STEP;
+    const sctx = c.getContext("2d");
+    sctx.fillStyle = `rgba(0, 0, 0, ${RENDER_CONFIG.EFFECTS.SCANLINE_ALPHA})`;
+    sctx.fillRect(0, 0, 1, 1);
+    return sctx.createPattern(c, "repeat");
+  })();
+
+  function drawScanlinesTo(target) {
+    target.fillStyle = scanlinePattern;
+    target.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
   // ---- Player ----
@@ -771,6 +791,7 @@ const Renderer = (() => {
 
   return {
     init,
+    invalidateMazeCache,
     drawArena,
     drawMaze,
     drawPlayer,
