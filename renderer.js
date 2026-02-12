@@ -154,16 +154,20 @@ const Renderer = (() => {
     target.globalAlpha = 1;
   }
 
-  // ---- CRT Scanline Overlay ----
+  // ---- CRT Scanline Pattern (pre-rendered, reused via pattern fill) ----
+  const scanlinePattern = (() => {
+    const c = document.createElement("canvas");
+    c.width = 1;
+    c.height = RENDER_CONFIG.EFFECTS.SCANLINE_STEP;
+    const sctx = c.getContext("2d");
+    sctx.fillStyle = `rgba(0, 0, 0, ${RENDER_CONFIG.EFFECTS.SCANLINE_ALPHA})`;
+    sctx.fillRect(0, 0, 1, 1);
+    return sctx.createPattern(c, "repeat");
+  })();
+
   function drawScanlinesTo(target) {
-    target.fillStyle = `rgba(0, 0, 0, ${RENDER_CONFIG.EFFECTS.SCANLINE_ALPHA})`;
-    for (
-      let y = 0;
-      y < CANVAS_HEIGHT;
-      y += RENDER_CONFIG.EFFECTS.SCANLINE_STEP
-    ) {
-      target.fillRect(0, y, CANVAS_WIDTH, 1);
-    }
+    target.fillStyle = scanlinePattern;
+    target.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
   // ---- Player ----
