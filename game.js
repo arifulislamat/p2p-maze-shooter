@@ -684,6 +684,7 @@ const Game = (() => {
 
     Network.send({
       type: fullSync ? "state_sync" : "state",
+      mazeRotationStart: mazeRotationStart,
       p1: {
         x: p1.x,
         y: p1.y,
@@ -735,8 +736,12 @@ const Game = (() => {
     if (data.mazeKey && data.mazeKey !== selectedMazeKey) {
       activeMaze = parseMaze(data.mazeKey);
       selectedMazeKey = data.mazeKey;
-      mazeRotationStart = Date.now();
       Renderer.showMazeAnnouncement(activeMaze.name);
+    }
+
+    // Sync maze rotation timestamp from host (avoids local Date.now() desync)
+    if (data.mazeRotationStart !== undefined) {
+      mazeRotationStart = data.mazeRotationStart;
     }
 
     // Apply player states
@@ -971,6 +976,14 @@ const Game = (() => {
     if (gameMode === "online-guest") {
       // Guest: only send input, state arrives via onData callback
       sendLocalInput();
+      // Locally interpolate respawn timers for smooth display (host controls alive state)
+      if (gameState === STATE.PLAYING) {
+        [p1, p2].forEach((player) => {
+          if (!player.alive && player.respawnTimer > 0) {
+            player.respawnTimer = Math.max(0, player.respawnTimer - dt);
+          }
+        });
+      }
     } else {
       // Host: run all physics
       if (gameState === STATE.COUNTDOWN) {
