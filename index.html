@@ -40,10 +40,10 @@
       </div>
 
       <div class="lobby-buttons">
-        <button class="btn btn-secondary" onclick="Game.showOnlineUI('host')">
+        <button class="btn btn-secondary" onclick="Sound.init(); Sound.resume(); Game.showOnlineUI('host')">
           CREATE GAME ROOM
         </button>
-        <button class="btn btn-secondary" onclick="Game.showOnlineUI('join')">
+        <button class="btn btn-secondary" onclick="Sound.init(); Sound.resume(); Game.showOnlineUI('join')">
           JOIN GAME ROOM
         </button>
       </div>
@@ -174,7 +174,7 @@
           onkeydown="if (event.key === 'Enter') Game.joinOnlineGame();"
         />
         <div class="join-buttons">
-          <button class="btn btn-primary" onclick="Game.joinOnlineGame()">
+          <button class="btn btn-primary" onclick="Sound.init(); Sound.resume(); Game.joinOnlineGame()">
             Connect
           </button>
           <button class="btn btn-secondary" onclick="Game.cancelOnline()">
@@ -184,6 +184,12 @@
         <p id="joinStatus"></p>
       </div>
     </div>
+
+    <!-- ===== Mute Toggle ===== -->
+    <button id="muteBtn" onclick="Sound.toggleMute()" title="Toggle Sound" style="padding: 6px;">
+      <svg id="icon-sound-on" width="32" height="32" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><polygon points="13 7 7 12 3 12 3 18 7 18 13 23 13 7"></polygon><path d="M23 7a9 9 0 0 1 0 14"></path></svg>
+      <svg id="icon-sound-off" width="32" height="32" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;display:none;"><polygon points="13 7 7 12 3 12 3 18 7 18 13 23 13 7"></polygon><line x1="26" y1="2" x2="2" y2="26"></line></svg>
+    </button>
 
     <!-- ===== Game Canvas ===== -->
     <div id="gameContainer">
@@ -196,6 +202,7 @@
     <!-- ===== Scripts (order matters) ===== -->
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
     <script src="constants.js"></script>
+    <script src="sound.js"></script>
     <script src="physics.js"></script>
     <script src="renderer.js"></script>
     <script src="network.js"></script>

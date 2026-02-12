@@ -113,6 +113,7 @@ const Network = (() => {
     connected = true;
     clearPollTimer();
     console.log("[Net] ✓ DataChannel OPEN — connected!");
+    if (typeof Sound !== 'undefined') Sound.play('connected', CONFIG.CANVAS.WIDTH / 2, CONFIG.CANVAS.HEIGHT / 2);
     if (callbacks.onConnected) callbacks.onConnected();
   }
 

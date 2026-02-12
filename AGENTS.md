@@ -2,7 +2,7 @@
 
 ## Big picture
 
-- This is a single-page, vanilla JS P2P shooter (no build step). The entry point is `index.html`, which loads scripts in order: `constants.js` -> `physics.js` -> `renderer.js` -> `network.js` -> `game.js`.
+- This is a single-page, vanilla JS P2P shooter (no build step). The entry point is `index.html`, which loads scripts in order: `constants.js` -> `sound.js` -> `physics.js` -> `renderer.js` -> `network.js` -> `game.js`.
 - Core loop and state live in the `Game` module (IIFE). `Game` owns the tick, input handling, mode switching (local/online host/online guest), and state transitions.
 - Networking is host-authoritative: the host simulates physics and broadcasts full state every frame; the guest only sends inputs. See `broadcastState()`/`applyRemoteState()` in `game.js` and `Network.send()` in `network.js`.
 
@@ -12,6 +12,7 @@
 - `physics.js` uses `activeMaze.walls` for collision checks; keep wall rectangles aligned to the maze grid.
 - `renderer.js` renders the maze grid (`activeMaze.grid`) and HUD every frame. It assumes the retro color palette in `COLORS` from `constants.js`.
 - `network.js` wraps PeerJS (via CDN) and manages room codes, connection lifecycle, and the host/guest roles.
+- `sound.js` provides procedural audio via Web Audio API (IIFE, `Sound` global). All 11 sound effects are synthesized — zero audio files. The host queues sounds during the tick via `Sound.play()`, flushes them onto the `broadcastState()` message as a `sounds` array, and the guest plays them via `Sound.playRemote()` in `applyRemoteState()`. Stereo panning is position-based (event x-coordinate mapped to left/right speaker). Mute state is persisted in `localStorage('p2p-muted')`.
 - `index.html` contains the lobby UI and inline script for building the maze selector; it calls `Game.*` entry points directly.
 
 ## Project-specific conventions
@@ -34,6 +35,7 @@
 
 - Game loop + state machine: `game.js`
 - PeerJS wrapper and room code handling: `network.js`
+- Procedural sound effects: `sound.js`
 - Collision rules: `physics.js`
 - Rendering and HUD: `renderer.js`
 - Maze definitions and parsing: `constants.js`
