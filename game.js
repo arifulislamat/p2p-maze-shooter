@@ -584,6 +584,7 @@ const Game = (() => {
   function switchMaze(mazeKey) {
     activeMaze = parseMaze(mazeKey);
     selectedMazeKey = mazeKey;
+    Renderer.invalidateMazeCache();
     mazeRotationStart = Date.now();
 
     // Respawn both players at new maze spawns, keep scores
@@ -650,6 +651,7 @@ const Game = (() => {
     mazesPlayed = 0;
     selectedMazeKey = mazeOrder[0];
     activeMaze = parseMaze(selectedMazeKey);
+    Renderer.invalidateMazeCache();
     mazeRotationStart = Date.now();
     matchStartTime = Date.now();
     lastResync = Date.now();
@@ -736,6 +738,7 @@ const Game = (() => {
     if (data.mazeKey && data.mazeKey !== selectedMazeKey) {
       activeMaze = parseMaze(data.mazeKey);
       selectedMazeKey = data.mazeKey;
+      Renderer.invalidateMazeCache();
       Renderer.showMazeAnnouncement(activeMaze.name);
     }
 
@@ -784,6 +787,7 @@ const Game = (() => {
     if (data.type === "config") {
       selectedMazeKey = data.mazeKey;
       activeMaze = parseMaze(data.mazeKey);
+      Renderer.invalidateMazeCache();
       // Use host's maze order so rotation and spawns stay in sync
       if (data.mazeOrder) {
         mazeOrder = data.mazeOrder;
@@ -1143,6 +1147,7 @@ const Game = (() => {
     if (MAZES[mazeKey]) {
       selectedMazeKey = mazeKey;
       activeMaze = parseMaze(mazeKey);
+      Renderer.invalidateMazeCache();
       highlightSelectedMaze();
     }
   }
@@ -1183,6 +1188,7 @@ const Game = (() => {
     mazesPlayed = 0;
     selectedMazeKey = mazeOrder[0];
     activeMaze = parseMaze(selectedMazeKey);
+    Renderer.invalidateMazeCache();
     mazeRotationStart = Date.now();
     matchStartTime = Date.now();
 
