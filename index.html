@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <title>P2P Maze Shooter — Browser Multiplayer Game</title>
     <meta
       name="description"
@@ -91,6 +94,7 @@
               .querySelectorAll(".maze-option")
               .forEach((el) => el.classList.remove("selected"));
             div.classList.add("selected");
+            div.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
           };
 
           // Mini preview canvas
@@ -248,6 +252,18 @@
     <!-- ===== Game Canvas ===== -->
     <div id="gameContainer">
       <canvas id="gameCanvas"></canvas>
+
+      <!-- Touch Controls (portrait mobile only, shown via CSS media query) -->
+      <div id="touch-controls">
+        <div id="shoot-zone">
+          <button id="shoot-btn" aria-label="Shoot">&#9679;</button>
+        </div>
+        <div id="joystick-zone">
+          <div id="joystick-base">
+            <div id="joystick-knob"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ===== Controls Help ===== -->

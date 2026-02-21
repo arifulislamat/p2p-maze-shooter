@@ -14,6 +14,7 @@
 - `network.js` wraps PeerJS (via CDN) and manages room codes, connection lifecycle, and the host/guest roles.
 - `sound.js` provides procedural audio via Web Audio API (IIFE, `Sound` global). All 11 sound effects are synthesized — zero audio files. The host queues sounds during the tick via `Sound.play()`, flushes them onto the `broadcastState()` message as a `sounds` array, and the guest plays them via `Sound.playRemote()` in `applyRemoteState()`. Stereo panning is position-based (event x-coordinate mapped to left/right speaker). Mute state is persisted in `localStorage('p2p-muted')`.
 - `index.html` contains the lobby UI and inline script for building the maze selector; it calls `Game.*` entry points directly.
+- **Mobile touch controls** — `#touch-controls` (inside `#gameContainer`) is a full-width bar shown only under `@media (orientation: portrait) and (max-width: 1024px)`. Left half: `#shoot-btn` (maps `touchstart/end` → `keys["Space"]`). Right half: `#joystick-zone` with a floating-knob joystick that maps 8 directional sectors → `keys["KeyW/A/S/D"]`. Wired in `initTouchControls()` in `game.js`, called from `init()`. `resizeCanvas()` subtracts `#touch-controls.offsetHeight` so the canvas never overlaps the controls bar.
 
 ## Project-specific conventions
 
