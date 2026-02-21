@@ -1003,26 +1003,42 @@ const Game = (() => {
   // ======================================================
   // ---- Main Game Loop ----
   // ======================================================
+  const PHYSICS_STEP_MS = 1000 / 60; // fixed 60 Hz physics tick
+  let physicsAccumulator = 0;
   let lastTime = 0;
 
   function gameLoop(timestamp) {
-    const dt = timestamp - lastTime;
+    const rawDt = timestamp - lastTime;
     lastTime = timestamp;
+
+    // Accumulate wall-clock time; cap at 100 ms to avoid spiral-of-death
+    // after tab visibility changes or slow frames.
+    physicsAccumulator += Math.min(rawDt, 100);
+    const runPhysics = physicsAccumulator >= PHYSICS_STEP_MS;
+    if (runPhysics) {
+      physicsAccumulator -= PHYSICS_STEP_MS;
+      // If we've fallen behind by more than one extra step, discard the
+      // surplus rather than catch-up and run physics multiple times fast.
+      if (physicsAccumulator >= PHYSICS_STEP_MS) physicsAccumulator = 0;
+    }
 
     // --- Update ---
     if (gameMode === "online-guest") {
       // Guest: only send input, state arrives via onData callback
       sendLocalInput();
       // Locally interpolate respawn timers for smooth display (host controls alive state)
-      if (gameState === STATE.PLAYING) {
+      if (runPhysics && gameState === STATE.PLAYING) {
         [p1, p2].forEach((player) => {
           if (!player.alive && player.respawnTimer > 0) {
-            player.respawnTimer = Math.max(0, player.respawnTimer - dt);
+            player.respawnTimer = Math.max(
+              0,
+              player.respawnTimer - PHYSICS_STEP_MS,
+            );
           }
         });
       }
-    } else {
-      // Host: run all physics
+    } else if (runPhysics) {
+      // Host: run all physics at fixed 60 Hz
       if (gameState === STATE.COUNTDOWN) {
         updateCountdown();
       }
@@ -1040,9 +1056,9 @@ const Game = (() => {
         processRemoteInput(p2);
 
         updateBullets();
-        updateBombs(dt);
-        updateZombies(dt);
-        updateRespawns(dt);
+        updateBombs(PHYSICS_STEP_MS);
+        updateZombies(PHYSICS_STEP_MS);
+        updateRespawns(PHYSICS_STEP_MS);
         checkMazeRotation();
       }
 
@@ -1092,7 +1108,7 @@ const Game = (() => {
     if (!p2.alive) Renderer.drawRespawnTimer(p2, p2.respawnTimer);
 
     // Maze change announcement
-    Renderer.drawMazeAnnouncement(dt);
+    Renderer.drawMazeAnnouncement(rawDt);
 
     // Overlays
     if (gameState === STATE.COUNTDOWN) {
@@ -1136,6 +1152,9 @@ const Game = (() => {
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("resize", resizeCanvas);
+
+    // Mobile touch controls
+    initTouchControls();
   }
 
   function resizeCanvas() {
@@ -1146,6 +1165,12 @@ const Game = (() => {
       controls && controls.style.display !== "none" && controls.offsetHeight;
     const controlsHeight = controlsVisible ? controls.offsetHeight : 0;
 
+    const touchControls = document.getElementById("touch-controls");
+    const touchControlsHeight =
+      touchControls && touchControls.offsetParent !== null
+        ? touchControls.offsetHeight
+        : 0;
+
     const availableWidth = Math.max(
       1,
       window.innerWidth - GAME_CONFIG.VIEWPORT.SAFE_MARGIN * 2,
@@ -1154,6 +1179,7 @@ const Game = (() => {
       1,
       window.innerHeight -
         controlsHeight -
+        touchControlsHeight -
         GAME_CONFIG.VIEWPORT.SAFE_MARGIN * 2,
     );
 
@@ -1173,6 +1199,156 @@ const Game = (() => {
     canvas.style.height = `${displayHeight}px`;
 
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  }
+
+  // ---- Mobile touch controls ----
+  function initTouchControls() {
+    const shootBtn = document.getElementById("shoot-btn");
+    const joystickZone = document.getElementById("joystick-zone");
+    const joystickBase = document.getElementById("joystick-base");
+    const joystickKnob = document.getElementById("joystick-knob");
+
+    if (!shootBtn || !joystickZone || !joystickBase || !joystickKnob) return;
+
+    const DEAD_ZONE = 14; // px — minimum drag before a direction registers
+    const BASE_RADIUS = 65; // half of joystick-base width (130px)
+    const KNOB_LIMIT = BASE_RADIUS - 28; // max knob travel from center
+
+    // ---- Shoot button ----
+    shootBtn.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault();
+        keys["Space"] = true;
+      },
+      { passive: false },
+    );
+
+    shootBtn.addEventListener(
+      "touchend",
+      (e) => {
+        e.preventDefault();
+        keys["Space"] = false;
+      },
+      { passive: false },
+    );
+
+    shootBtn.addEventListener("touchcancel", () => {
+      keys["Space"] = false;
+    });
+
+    // ---- Joystick ----
+    let joystickTouchId = null;
+    let baseCX = 0;
+    let baseCY = 0;
+
+    function getBaseCenter() {
+      const rect = joystickBase.getBoundingClientRect();
+      return { cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 };
+    }
+
+    function clearDirectionKeys() {
+      keys["KeyW"] = false;
+      keys["KeyS"] = false;
+      keys["KeyA"] = false;
+      keys["KeyD"] = false;
+    }
+
+    function applyJoystickVector(dx, dy) {
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      clearDirectionKeys();
+      if (dist < DEAD_ZONE) {
+        joystickKnob.style.transform = "translate(0px, 0px)";
+        return;
+      }
+      // Clamp knob visual position
+      const clampedDist = Math.min(dist, KNOB_LIMIT);
+      const nx = (dx / dist) * clampedDist;
+      const ny = (dy / dist) * clampedDist;
+      joystickKnob.style.transform = `translate(${nx}px, ${ny}px)`;
+
+      // 8-directional mapping using 45° sectors
+      // atan2: right=0, down=PI/2, left=±PI, up=-PI/2
+      const a = Math.atan2(dy, dx);
+      const PI8 = Math.PI / 8;
+
+      if (a > -5 * PI8 && a <= -3 * PI8) {
+        keys["KeyW"] = true;
+      } // N
+      if (a > -3 * PI8 && a <= -PI8) {
+        keys["KeyW"] = true;
+        keys["KeyD"] = true;
+      } // NE
+      if (a > -PI8 && a <= PI8) {
+        keys["KeyD"] = true;
+      } // E
+      if (a > PI8 && a <= 3 * PI8) {
+        keys["KeyD"] = true;
+        keys["KeyS"] = true;
+      } // SE
+      if (a > 3 * PI8 && a <= 5 * PI8) {
+        keys["KeyS"] = true;
+      } // S
+      if (a > 5 * PI8 && a <= 7 * PI8) {
+        keys["KeyS"] = true;
+        keys["KeyA"] = true;
+      } // SW
+      if (a > 7 * PI8 || a <= -7 * PI8) {
+        keys["KeyA"] = true;
+      } // W
+      if (a > -7 * PI8 && a <= -5 * PI8) {
+        keys["KeyA"] = true;
+        keys["KeyW"] = true;
+      } // NW
+    }
+
+    joystickZone.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault();
+        if (joystickTouchId !== null) return; // already tracking
+        const touch = e.changedTouches[0];
+        joystickTouchId = touch.identifier;
+        const c = getBaseCenter();
+        baseCX = c.cx;
+        baseCY = c.cy;
+        applyJoystickVector(touch.clientX - baseCX, touch.clientY - baseCY);
+      },
+      { passive: false },
+    );
+
+    joystickZone.addEventListener(
+      "touchmove",
+      (e) => {
+        e.preventDefault();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const touch = e.changedTouches[i];
+          if (touch.identifier === joystickTouchId) {
+            applyJoystickVector(touch.clientX - baseCX, touch.clientY - baseCY);
+            break;
+          }
+        }
+      },
+      { passive: false },
+    );
+
+    function onJoystickEnd(e) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joystickTouchId) {
+          joystickTouchId = null;
+          clearDirectionKeys();
+          joystickKnob.style.transform = "translate(0px, 0px)";
+          break;
+        }
+      }
+    }
+
+    joystickZone.addEventListener("touchend", onJoystickEnd, {
+      passive: false,
+    });
+    joystickZone.addEventListener("touchcancel", onJoystickEnd, {
+      passive: false,
+    });
   }
 
   // ---- Select maze from lobby ----
@@ -1248,6 +1424,7 @@ const Game = (() => {
     startCountdown();
     lastResync = Date.now();
     lastTime = performance.now();
+    physicsAccumulator = 0;
     requestAnimationFrame(gameLoop);
   }
 
