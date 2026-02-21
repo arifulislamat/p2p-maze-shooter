@@ -4,9 +4,21 @@ A real-time peer-to-peer multiplayer shooter built entirely with **vanilla JavaS
 
 > Two players battle across 6 rotating maze arenas, dodging bombs and zombies, in a retro-neon browser game powered by WebRTC.
 
+<div align="center">
+
+[![Play Now](https://img.shields.io/badge/▶%20Play%20Now-Live%20Demo-brightgreen?style=for-the-badge)](https://arifulislamat.github.io/p2p-maze-shooter/)
+
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![No Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
 ![Vanilla JS](https://img.shields.io/badge/built%20with-vanilla%20JS-yellow.svg)
+
+</div>
+
+---
+
+<div align="center">
+  <img src="demo.gif" alt="P2P Maze Shooter gameplay demo" width="700" />
+</div>
 
 ---
 
@@ -21,6 +33,14 @@ A real-time peer-to-peer multiplayer shooter built entirely with **vanilla JavaS
 - **Zero build step** — Pure HTML/CSS/JS. No bundler, no transpiler, no `npm install`. Clone and open.
 
 ## Quick Start
+
+### Play Online
+
+🎮 **No setup needed** — just open the game in your browser and share a room code with a friend:
+
+👉 **[https://arifulislamat.github.io/p2p-maze-shooter/](https://arifulislamat.github.io/p2p-maze-shooter/)**
+
+### Run Locally
 
 ```bash
 # Clone the repo
@@ -39,23 +59,62 @@ Then open `http://localhost:8000` in your browser.
 
 ### Browser Support
 
-| Browser     | Status         | Notes                                                                              |
-| ----------- | -------------- | ---------------------------------------------------------------------------------- |
-| **Firefox** | ✅ Supported   | Requires disabling `media.peerconnection.ice.obfuscate_host_addresses` (see below) |
-| Chrome      | 🚧 Coming soon |                                                                                    |
-| Edge        | 🚧 Coming soon |                                                                                    |
-| Safari      | 🚧 Coming soon |                                                                                    |
+| Browser     | Status       | Notes |
+| ----------- | ------------ | ----- |
+| Chrome      | ✅ Supported |       |
+| Edge        | ✅ Supported |       |
+| Brave       | ✅ Supported |       |
+| **Firefox** | ✅ Supported |       |
+| Safari      | ✅ Supported |       |
 
-#### Firefox Setup
+#### Local Network Play (Same Wi-Fi, Different Devices)
 
-Firefox obfuscates local IPs by default, which prevents WebRTC peer discovery on local networks. To play:
+If you and your opponent are on the **same local network** (e.g., same Wi-Fi), browsers hide real local IP addresses by default using mDNS obfuscation — a privacy feature that can prevent WebRTC from establishing a direct connection.
 
-1. Open `about:config` in Firefox
-2. Search for `media.peerconnection.ice.obfuscate_host_addresses`
-3. Set it to **`false`**
+**You only need to change this setting if you are playing on the same local network and the connection is failing.**
+
+<details>
+<summary><strong>Firefox</strong></summary>
+
+1. Open a new tab and go to `about:config`
+2. Accept the risk warning if prompted
+3. Search for `media.peerconnection.ice.obfuscate_host_addresses`
+4. Set it to **`false`**
+5. Reload the game page
+
+</details>
+
+<details>
+<summary><strong>Chrome</strong></summary>
+
+1. Open a new tab and go to `chrome://flags/#enable-webrtc-hide-local-ips-with-mdns`
+2. Set **"Anonymize local IPs exposed by WebRTC"** to **Disabled**
+3. Click **Relaunch** to restart Chrome
 4. Reload the game page
 
-> Cross-browser support is actively being worked on. Star the repo to stay updated!
+</details>
+
+<details>
+<summary><strong>Brave</strong></summary>
+
+1. Open a new tab and go to `brave://flags/#enable-webrtc-hide-local-ips-with-mdns`
+2. Set **"Anonymize local IPs exposed by WebRTC"** to **Disabled**
+3. Click **Relaunch** to restart Brave
+4. Reload the game page
+
+</details>
+
+<details>
+<summary><strong>Edge</strong></summary>
+
+1. Open a new tab and go to `edge://flags/#enable-webrtc-hide-local-ips-with-mdns`
+2. Set **"Anonymize local IPs exposed by WebRTC"** to **Disabled**
+3. Click **Relaunch** to restart Edge
+4. Reload the game page
+
+</details>
+
+> Playing across **different networks** (e.g., home vs. office) works out of the box in all browsers with no changes needed.
 
 ### How to Play
 
@@ -82,10 +141,10 @@ All modules use the **IIFE pattern** (Immediately Invoked Function Expression) t
 ```
 Host                              Guest
 ┌──────────┐   WebRTC (PeerJS)   ┌──────────┐
-│ Input     │◄───── inputs ──────│ Input     │
-│ Physics   │                    │           │
-│ Game Loop │───── full state ──►│ Renderer  │
-│ Renderer  │                    │           │
+│ Input    │◄───── inputs ───────│ Input    │
+│ Physics  │                     │          │
+│ Game Loop│───── full state ───►│ Renderer │
+│ Renderer │                     │          │
 └──────────┘                     └──────────┘
 ```
 
