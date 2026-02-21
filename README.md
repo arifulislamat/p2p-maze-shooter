@@ -16,13 +16,9 @@ A real-time peer-to-peer multiplayer shooter built entirely with **vanilla JavaS
 
 </div>
 
----
-
 <div align="center">
   <img src="assets/demo.gif" alt="P2P Maze Shooter gameplay demo" width="700" />
 </div>
-
----
 
 ## Features
 
