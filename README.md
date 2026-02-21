@@ -6,7 +6,9 @@ A real-time peer-to-peer multiplayer shooter built entirely with **vanilla JavaS
 
 <div align="center">
 
-[![Play Now](https://img.shields.io/badge/▶%20Play%20Now-Live%20Demo-brightgreen?style=for-the-badge)](https://arifulislamat.github.io/p2p-maze-shooter/)
+<a href="https://arifulislamat.github.io/p2p-maze-shooter/" target="_blank" rel="noopener noreferrer">
+  <img src="https://img.shields.io/badge/▶%20Play%20Now-Live%20Demo-brightgreen?style=for-the-badge" alt="Play Now" />
+</a>
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![No Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
@@ -17,7 +19,7 @@ A real-time peer-to-peer multiplayer shooter built entirely with **vanilla JavaS
 ---
 
 <div align="center">
-  <img src="demo.gif" alt="P2P Maze Shooter gameplay demo" width="700" />
+  <img src="assets/demo.gif" alt="P2P Maze Shooter gameplay demo" width="700" />
 </div>
 
 ---
