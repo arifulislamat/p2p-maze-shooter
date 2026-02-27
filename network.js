@@ -15,6 +15,8 @@ const Network = (() => {
     OPEN_POLL_INTERVAL_MS: 100,
     OPEN_POLL_LOG_EVERY: 10,
     OPEN_POLL_MAX_ATTEMPTS: 150,
+    RECONNECT_MAX_ATTEMPTS: 5,
+    RECONNECT_DELAY_MS: 2000,
   };
 
   let peer = null;
@@ -23,6 +25,7 @@ const Network = (() => {
   let callbacks = {};
   let openPollTimer = null;
   let connected = false;
+  let lastRoomCode = null;
 
   // Generate a room code (no confusable chars)
   function generateRoomCode() {
@@ -43,12 +46,28 @@ const Network = (() => {
     },
   };
 
+  // ---- Attach signaling-level lifecycle handlers to a peer ----
+  function attachPeerLifecycleHandlers(peerObj) {
+    peerObj.on("disconnected", () => {
+      console.log("[Net] Signaling WS disconnected — auto-reconnecting...");
+      if (peerObj && !peerObj.destroyed) {
+        peerObj.reconnect();
+      }
+    });
+
+    peerObj.on("close", () => {
+      console.log("[Net] Peer fully destroyed");
+      if (callbacks.onPeerClosed) callbacks.onPeerClosed();
+    });
+  }
+
   // ---- Host: create a room and wait for guest ----
   function createHost(cbs) {
     isHost = true;
     connected = false;
     callbacks = cbs;
     const roomCode = generateRoomCode();
+    lastRoomCode = roomCode;
     const peerId = NETWORK_CONFIG.PEER_PREFIX + roomCode;
 
     console.log("[Net] Creating host peer:", peerId);
@@ -74,6 +93,8 @@ const Network = (() => {
           : err.message || "Connection error";
       if (callbacks.onError) callbacks.onError(msg);
     });
+
+    attachPeerLifecycleHandlers(peer);
   }
 
   // ---- Guest: join an existing room ----
@@ -81,13 +102,14 @@ const Network = (() => {
     isHost = false;
     connected = false;
     callbacks = cbs;
+    lastRoomCode = roomCode.toUpperCase().trim();
 
     console.log("[Net] Creating guest peer...");
     peer = new Peer(PEER_CONFIG);
 
     peer.on("open", (id) => {
       console.log("[Net] Guest peer open, id:", id);
-      const peerId = NETWORK_CONFIG.PEER_PREFIX + roomCode.toUpperCase().trim();
+      const peerId = NETWORK_CONFIG.PEER_PREFIX + lastRoomCode;
       console.log("[Net] Connecting to host:", peerId);
       conn = peer.connect(peerId, {
         reliable: true,
@@ -105,6 +127,81 @@ const Network = (() => {
           : err.message || "Connection error";
       if (callbacks.onError) callbacks.onError(msg);
     });
+
+    attachPeerLifecycleHandlers(peer);
+  }
+
+  // ---- Host: restore a room with the same room code (after backgrounding) ----
+  function restoreHost(roomCode, cbs) {
+    clearPollTimer();
+    if (peer && !peer.destroyed) {
+      peer.destroy();
+    }
+    conn = null;
+    connected = false;
+    isHost = true;
+    callbacks = cbs;
+    lastRoomCode = roomCode;
+    const peerId = NETWORK_CONFIG.PEER_PREFIX + roomCode;
+
+    console.log("[Net] Restoring host peer:", peerId);
+    peer = new Peer(peerId, PEER_CONFIG);
+
+    peer.on("open", (id) => {
+      console.log("[Net] Host peer restored, id:", id);
+      if (callbacks.onReady) callbacks.onReady(roomCode);
+    });
+
+    peer.on("connection", (connection) => {
+      console.log("[Net] Restored host received guest connection");
+      conn = connection;
+      setTimeout(() => setupConnection(), 0);
+    });
+
+    peer.on("error", (err) => {
+      console.error("[Net] Restored host peer error:", err.type, err.message);
+      const msg =
+        err.type === "unavailable-id"
+          ? "Room code already in use. Try again."
+          : err.message || "Connection error";
+      if (callbacks.onError) callbacks.onError(msg);
+    });
+
+    attachPeerLifecycleHandlers(peer);
+  }
+
+  // ---- Guest: restore connection to a host (after backgrounding) ----
+  function restoreGuest(roomCode, cbs) {
+    clearPollTimer();
+    if (peer && !peer.destroyed) {
+      peer.destroy();
+    }
+    conn = null;
+    connected = false;
+    isHost = false;
+    callbacks = cbs;
+    lastRoomCode = roomCode;
+
+    console.log("[Net] Restoring guest peer...");
+    peer = new Peer(PEER_CONFIG);
+
+    peer.on("open", (id) => {
+      const peerId = NETWORK_CONFIG.PEER_PREFIX + roomCode;
+      console.log("[Net] Guest peer restored, connecting to:", peerId);
+      conn = peer.connect(peerId, { reliable: true, serialization: "json" });
+      setTimeout(() => setupConnection(), 0);
+    });
+
+    peer.on("error", (err) => {
+      console.error("[Net] Restored guest peer error:", err.type, err.message);
+      const msg =
+        err.type === "peer-unavailable"
+          ? "Room not found. Host may have left."
+          : err.message || "Connection error";
+      if (callbacks.onError) callbacks.onError(msg);
+    });
+
+    attachPeerLifecycleHandlers(peer);
   }
 
   // ---- Mark as connected (deduplicated) ----
@@ -301,12 +398,19 @@ const Network = (() => {
     return connected && conn && conn.open;
   }
 
+  function getLastRoomCode() {
+    return lastRoomCode;
+  }
+
   return {
     createHost,
     joinGame,
+    restoreHost,
+    restoreGuest,
     send,
     disconnect,
     getIsHost,
     isConnected,
+    getLastRoomCode,
   };
 })();

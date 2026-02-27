@@ -21,6 +21,8 @@ const Game = (() => {
     },
     NETWORK: {
       RESYNC_INTERVAL_MS: 5000,
+      RECONNECT_TIMEOUT_MS: 30000,
+      RECONNECT_INTERVAL_MS: 3000,
     },
     VIEWPORT: {
       SAFE_MARGIN: 24,
@@ -52,6 +54,9 @@ const Game = (() => {
     shoot: false,
   };
   let isDisconnected = false;
+  let isReconnecting = false;
+  let reconnectDeadline = 0;
+  let reconnectIntervalTimer = null;
   let displayMazeTimeLeft = null;
   let displayMatchTimeLeft = null;
   let initialized = false;
@@ -844,21 +849,98 @@ const Game = (() => {
 
   // Handle peer disconnection
   function handleDisconnect() {
-    if (isDisconnected) return; // already handling
-    isDisconnected = true;
+    if (isDisconnected || isReconnecting) return;
 
-    // Return to lobby after a brief delay
-    setTimeout(() => {
-      returnToLobby();
-    }, 3000);
+    // During active online play, try to reconnect before giving up
+    if (gameMode === "online-host" || gameMode === "online-guest") {
+      startReconnecting();
+    } else {
+      isDisconnected = true;
+      setTimeout(() => returnToLobby(), 3000);
+    }
+  }
+
+  // ---- Reconnection state machine ----
+  function startReconnecting() {
+    isReconnecting = true;
+    reconnectDeadline = Date.now() + GAME_CONFIG.NETWORK.RECONNECT_TIMEOUT_MS;
+    console.log("[Game] Entering RECONNECTING state, 30s window");
+    attemptReconnect();
+    reconnectIntervalTimer = setInterval(() => {
+      if (!isReconnecting) return;
+      if (Date.now() >= reconnectDeadline) {
+        stopReconnecting();
+        isDisconnected = true;
+        setTimeout(() => returnToLobby(), 3000);
+        return;
+      }
+      attemptReconnect();
+    }, GAME_CONFIG.NETWORK.RECONNECT_INTERVAL_MS);
+  }
+
+  function stopReconnecting() {
+    isReconnecting = false;
+    if (reconnectIntervalTimer) {
+      clearInterval(reconnectIntervalTimer);
+      reconnectIntervalTimer = null;
+    }
+  }
+
+  function attemptReconnect() {
+    const roomCode = Network.getLastRoomCode();
+    if (!roomCode) return;
+    console.log("[Game] Reconnect attempt as", gameMode);
+
+    const cbs = {
+      onReady: () => {
+        // Host peer is back up — room link is live again, waiting for guest
+        console.log("[Game] Reconnect: host peer ready, awaiting guest...");
+      },
+      onConnected: () => {
+        console.log("[Game] Reconnect successful!");
+        stopReconnecting();
+        // Re-send config so guest can resync maze state
+        if (gameMode === "online-host") {
+          Network.send({ type: "config", mazeKey: selectedMazeKey, mazeOrder: mazeOrder });
+        }
+      },
+      onData: handleNetworkData,
+      onDisconnected: handleDisconnect,
+      onPeerClosed: () => {
+        // Peer fully destroyed (not just WS drop), let interval retry
+        console.warn("[Game] Peer closed during reconnect window");
+      },
+      onError: (msg) => {
+        console.warn("[Game] Reconnect attempt error:", msg);
+        // Interval will retry automatically
+      },
+    };
+
+    if (gameMode === "online-host") {
+      Network.restoreHost(roomCode, cbs);
+    } else {
+      Network.restoreGuest(roomCode, cbs);
+    }
+  }
+
+  // ---- Page visibility: proactively reconnect on foreground ----
+  function handleVisibilityChange() {
+    if (document.visibilityState !== "visible") return;
+    if (gameMode !== "online-host" && gameMode !== "online-guest") return;
+    if (isReconnecting) return; // already recovering
+    if (Network.isConnected()) return; // still alive
+    console.log("[Game] Tab foregrounded — connection lost while backgrounded, reconnecting");
+    startReconnecting();
   }
 
   // Return to lobby screen
   function returnToLobby() {
+    stopReconnecting();
     Network.disconnect();
     gameMode = "lobby";
     gameState = STATE.LOBBY;
     isDisconnected = false;
+    isReconnecting = false;
     remoteInput = {
       up: false,
       down: false,
@@ -1130,7 +1212,13 @@ const Game = (() => {
     }
 
     // Disconnect overlay (on top of everything)
-    if (isDisconnected) {
+    if (isReconnecting) {
+      const secsLeft = Math.max(
+        0,
+        Math.ceil((reconnectDeadline - Date.now()) / 1000),
+      );
+      Renderer.drawReconnecting(secsLeft);
+    } else if (isDisconnected) {
       Renderer.drawDisconnected();
     }
 
@@ -1155,6 +1243,9 @@ const Game = (() => {
 
     // Mobile touch controls
     initTouchControls();
+
+    // Reconnect when tab comes back to foreground
+    document.addEventListener("visibilitychange", handleVisibilityChange);
   }
 
   function resizeCanvas() {
@@ -1429,7 +1520,6 @@ const Game = (() => {
   }
 
   return {
-    init,
     startOnlineGame,
     restartGame,
     selectMaze,
