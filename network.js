@@ -7,7 +7,8 @@ const Network = (() => {
     ROOM_CODE_LENGTH: 6,
     ROOM_CODE_CHARS: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
     PEER_PREFIX: "p2p-shooter-",
-    PEER_DEBUG: 2,
+    // Debug level: 2 (warnings) locally, 0 (silent) in production
+    PEER_DEBUG: typeof location !== "undefined" && location.hostname === "localhost" ? 2 : 0,
     ICE_SERVERS: [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
@@ -15,8 +16,6 @@ const Network = (() => {
     OPEN_POLL_INTERVAL_MS: 100,
     OPEN_POLL_LOG_EVERY: 10,
     OPEN_POLL_MAX_ATTEMPTS: 150,
-    RECONNECT_MAX_ATTEMPTS: 5,
-    RECONNECT_DELAY_MS: 2000,
   };
 
   let peer = null;
@@ -26,6 +25,9 @@ const Network = (() => {
   let openPollTimer = null;
   let connected = false;
   let lastRoomCode = null;
+  // Set to true before intentionally calling peer.destroy() so the 'close'
+  // event doesn't incorrectly fire onPeerClosed into the reconnect callbacks.
+  let intentionalDestroy = false;
 
   // Generate a room code (no confusable chars)
   function generateRoomCode() {
@@ -57,7 +59,8 @@ const Network = (() => {
 
     peerObj.on("close", () => {
       console.log("[Net] Peer fully destroyed");
-      if (callbacks.onPeerClosed) callbacks.onPeerClosed();
+      // Skip callback when we caused the destroy ourselves (e.g. restoreHost/restoreGuest)
+      if (!intentionalDestroy && callbacks.onPeerClosed) callbacks.onPeerClosed();
     });
   }
 
@@ -81,8 +84,9 @@ const Network = (() => {
     peer.on("connection", (connection) => {
       console.log("[Net] Host received connection from guest");
       conn = connection;
-      // Defer setup to let PeerJS finish its internal message processing
-      setTimeout(() => setupConnection(), 0);
+      // Capture conn now; the module-level `conn` may be replaced before the timeout fires
+      const capturedConn = conn;
+      setTimeout(() => setupConnection(capturedConn), 0);
     });
 
     peer.on("error", (err) => {
@@ -115,8 +119,9 @@ const Network = (() => {
         reliable: true,
         serialization: "json",
       });
-      // Defer setup to let PeerJS finish its internal message processing
-      setTimeout(() => setupConnection(), 0);
+      // Capture conn now; the module-level `conn` may be replaced before the timeout fires
+      const capturedConn = conn;
+      setTimeout(() => setupConnection(capturedConn), 0);
     });
 
     peer.on("error", (err) => {
@@ -134,10 +139,16 @@ const Network = (() => {
   // ---- Host: restore a room with the same room code (after backgrounding) ----
   function restoreHost(roomCode, cbs) {
     clearPollTimer();
+    // Close old conn first so its stale 'close' event doesn't trigger new callbacks
+    if (conn) {
+      conn.close();
+      conn = null;
+    }
+    intentionalDestroy = true;
     if (peer && !peer.destroyed) {
       peer.destroy();
     }
-    conn = null;
+    intentionalDestroy = false;
     connected = false;
     isHost = true;
     callbacks = cbs;
@@ -155,7 +166,8 @@ const Network = (() => {
     peer.on("connection", (connection) => {
       console.log("[Net] Restored host received guest connection");
       conn = connection;
-      setTimeout(() => setupConnection(), 0);
+      const capturedConn = conn;
+      setTimeout(() => setupConnection(capturedConn), 0);
     });
 
     peer.on("error", (err) => {
@@ -173,10 +185,16 @@ const Network = (() => {
   // ---- Guest: restore connection to a host (after backgrounding) ----
   function restoreGuest(roomCode, cbs) {
     clearPollTimer();
+    // Close old conn first so its stale 'close' event doesn't trigger new callbacks
+    if (conn) {
+      conn.close();
+      conn = null;
+    }
+    intentionalDestroy = true;
     if (peer && !peer.destroyed) {
       peer.destroy();
     }
-    conn = null;
+    intentionalDestroy = false;
     connected = false;
     isHost = false;
     callbacks = cbs;
@@ -189,7 +207,8 @@ const Network = (() => {
       const peerId = NETWORK_CONFIG.PEER_PREFIX + roomCode;
       console.log("[Net] Guest peer restored, connecting to:", peerId);
       conn = peer.connect(peerId, { reliable: true, serialization: "json" });
-      setTimeout(() => setupConnection(), 0);
+      const capturedConn = conn;
+      setTimeout(() => setupConnection(capturedConn), 0);
     });
 
     peer.on("error", (err) => {
@@ -220,7 +239,8 @@ const Network = (() => {
   }
 
   // ---- Poll for conn.open as fallback ----
-  function startOpenPoll() {
+  // connRef is the specific connection instance this poll belongs to.
+  function startOpenPoll(connRef) {
     clearPollTimer();
     let attempts = 0;
     openPollTimer = setInterval(() => {
@@ -228,43 +248,43 @@ const Network = (() => {
 
       // Log state every second
       if (attempts % NETWORK_CONFIG.OPEN_POLL_LOG_EVERY === 0) {
-        const dcState = conn && conn._dc ? conn._dc.readyState : "no _dc";
+        const dcState = connRef && connRef._dc ? connRef._dc.readyState : "no _dc";
         const pcState =
-          conn && conn.peerConnection
-            ? conn.peerConnection.connectionState
+          connRef && connRef.peerConnection
+            ? connRef.peerConnection.connectionState
             : "no pc";
         const iceState =
-          conn && conn.peerConnection
-            ? conn.peerConnection.iceConnectionState
+          connRef && connRef.peerConnection
+            ? connRef.peerConnection.iceConnectionState
             : "no pc";
         console.log(
-          `[Net] Poll #${attempts}: conn.open=${conn?.open}, dc=${dcState}, pc=${pcState}, ice=${iceState}`,
+          `[Net] Poll #${attempts}: conn.open=${connRef?.open}, dc=${dcState}, pc=${pcState}, ice=${iceState}`,
         );
       }
 
-      if (conn && conn.open) {
+      if (connRef && connRef.open) {
         console.log("[Net] Poll: conn.open=true after", attempts, "checks");
         markConnected();
         return;
       }
 
       // Check underlying DataChannel
-      if (conn && conn._dc && conn._dc.readyState === "open") {
+      if (connRef && connRef._dc && connRef._dc.readyState === "open") {
         console.log("[Net] Poll: _dc open after", attempts, "checks");
         markConnected();
         return;
       }
 
       // Check underlying PeerConnection
-      if (conn && conn.peerConnection) {
-        const pc = conn.peerConnection;
+      if (connRef && connRef.peerConnection) {
+        const pc = connRef.peerConnection;
         if (
           pc.connectionState === "connected" ||
           pc.iceConnectionState === "connected"
         ) {
           // PC connected but DataChannel not open yet — wait a bit more
-          if (attempts > 5 && conn._dc) {
-            console.log("[Net] PC connected, dc state:", conn._dc.readyState);
+          if (attempts > 5 && connRef._dc) {
+            console.log("[Net] PC connected, dc state:", connRef._dc.readyState);
           }
         }
         if (
@@ -296,21 +316,24 @@ const Network = (() => {
   }
 
   // ---- Set up connection event handlers ----
-  function setupConnection() {
-    console.log("[Net] Setting up connection, conn.open:", conn.open);
+  // connRef is the specific DataConnection instance to wire up. Using an explicit
+  // parameter avoids reading stale module-level `conn` if the reference is
+  // replaced (e.g. during rapid reconnects) before the deferred call fires.
+  function setupConnection(connRef) {
+    console.log("[Net] Setting up connection, conn.open:", connRef.open);
 
     // Immediate check
-    if (conn.open) {
+    if (connRef.open) {
       markConnected();
     }
 
     // Event-based detection
-    conn.on("open", () => {
+    connRef.on("open", () => {
       console.log("[Net] conn 'open' event fired");
       markConnected();
     });
 
-    conn.on("data", (data) => {
+    connRef.on("data", (data) => {
       if (!connected) {
         console.log("[Net] Got data before open event — marking connected");
         markConnected();
@@ -318,44 +341,47 @@ const Network = (() => {
       if (callbacks.onData) callbacks.onData(data);
     });
 
-    conn.on("close", () => {
+    connRef.on("close", () => {
       console.log("[Net] Connection closed");
       clearPollTimer();
-      if (callbacks.onDisconnected) callbacks.onDisconnected();
+      // Guard: ignore close events from stale connections that have been replaced
+      if (connRef === conn && callbacks.onDisconnected) callbacks.onDisconnected();
     });
 
-    conn.on("error", (err) => {
+    connRef.on("error", (err) => {
       console.error("[Net] Connection error:", err);
-      if (callbacks.onError)
+      // Guard: ignore error events from stale connections that have been replaced
+      if (connRef === conn && callbacks.onError)
         callbacks.onError(err.message || "Connection error");
     });
 
-    // Also monitor the underlying DataChannel directly if available
-    if (conn._dc) {
-      console.log("[Net] _dc exists at setup, state:", conn._dc.readyState);
-      conn._dc.addEventListener("open", () => {
+    // Also monitor the underlying DataChannel directly if available.
+    // On the guest side _dc may not exist yet at this point; the poll covers that.
+    if (connRef._dc) {
+      console.log("[Net] _dc exists at setup, state:", connRef._dc.readyState);
+      connRef._dc.addEventListener("open", () => {
         console.log("[Net] _dc 'open' event fired directly");
         markConnected();
       });
     }
 
     // Monitor underlying PeerConnection ICE state
-    if (conn.peerConnection) {
+    if (connRef.peerConnection) {
       console.log("[Net] peerConnection exists at setup");
-      conn.peerConnection.addEventListener("connectionstatechange", () => {
+      connRef.peerConnection.addEventListener("connectionstatechange", () => {
         console.log(
           "[Net] PC connectionState:",
-          conn.peerConnection.connectionState,
+          connRef.peerConnection.connectionState,
         );
       });
-      conn.peerConnection.addEventListener("iceconnectionstatechange", () => {
+      connRef.peerConnection.addEventListener("iceconnectionstatechange", () => {
         console.log(
           "[Net] PC iceConnectionState:",
-          conn.peerConnection.iceConnectionState,
+          connRef.peerConnection.iceConnectionState,
         );
       });
       // Watch for datachannel event (host side)
-      conn.peerConnection.addEventListener("datachannel", (e) => {
+      connRef.peerConnection.addEventListener("datachannel", (e) => {
         console.log("[Net] PC datachannel event, state:", e.channel.readyState);
         e.channel.addEventListener("open", () => {
           console.log("[Net] PC datachannel opened directly");
@@ -364,14 +390,16 @@ const Network = (() => {
       });
     }
 
-    // Start polling as fallback
-    startOpenPoll();
+    // Start polling as fallback, bound to this specific connection instance
+    startOpenPoll(connRef);
   }
 
   // ---- Send data to peer ----
   function send(data) {
     if (conn && conn.open) {
       conn.send(data);
+    } else {
+      console.debug("[Net] send() dropped — no open connection", data?.type);
     }
   }
 
@@ -379,14 +407,18 @@ const Network = (() => {
   function disconnect() {
     clearPollTimer();
     connected = false;
+    isHost = false;
+    lastRoomCode = null;
     if (conn) {
       conn.close();
       conn = null;
     }
+    intentionalDestroy = true;
     if (peer) {
       peer.destroy();
       peer = null;
     }
+    intentionalDestroy = false;
     callbacks = {};
   }
 
