@@ -248,7 +248,10 @@ const Network = (() => {
   }
 
   // ---- Mark as connected (deduplicated) ----
-  function markConnected() {
+  // connRef must match the current module-level conn; stale connection
+  // instances (replaced during rapid reconnects) are silently ignored.
+  function markConnected(connRef) {
+    if (connRef !== conn) return;
     if (connected) return;
     connected = true;
     clearPollTimer();
@@ -288,14 +291,14 @@ const Network = (() => {
 
       if (connRef && connRef.open) {
         console.log("[Net] Poll: conn.open=true after", attempts, "checks");
-        markConnected();
+        markConnected(connRef);
         return;
       }
 
       // Check underlying DataChannel
       if (connRef && connRef._dc && connRef._dc.readyState === "open") {
         console.log("[Net] Poll: _dc open after", attempts, "checks");
-        markConnected();
+        markConnected(connRef);
         return;
       }
 
@@ -348,19 +351,19 @@ const Network = (() => {
 
     // Immediate check
     if (connRef.open) {
-      markConnected();
+      markConnected(connRef);
     }
 
     // Event-based detection
     connRef.on("open", () => {
       console.log("[Net] conn 'open' event fired");
-      markConnected();
+      markConnected(connRef);
     });
 
     connRef.on("data", (data) => {
       if (!connected) {
         console.log("[Net] Got data before open event — marking connected");
-        markConnected();
+        markConnected(connRef);
       }
       if (callbacks.onData) callbacks.onData(data);
     });
@@ -385,7 +388,7 @@ const Network = (() => {
       console.log("[Net] _dc exists at setup, state:", connRef._dc.readyState);
       connRef._dc.addEventListener("open", () => {
         console.log("[Net] _dc 'open' event fired directly");
-        markConnected();
+        markConnected(connRef);
       });
     }
 
@@ -409,7 +412,7 @@ const Network = (() => {
         console.log("[Net] PC datachannel event, state:", e.channel.readyState);
         e.channel.addEventListener("open", () => {
           console.log("[Net] PC datachannel opened directly");
-          markConnected();
+          markConnected(connRef);
         });
       });
     }
