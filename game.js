@@ -1052,6 +1052,8 @@ const Game = (() => {
         ) {
           console.log("[Game] Host peer closed in lobby — relaunching:", code);
           setTimeout(() => setupHostRoom(code), 1500);
+        } else {
+          handleDisconnect();
         }
       },
       onError: (msg) => {

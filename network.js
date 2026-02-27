@@ -83,6 +83,8 @@ const Network = (() => {
 
     peerObj.on("close", () => {
       console.log("[Net] Peer fully destroyed");
+      // Drop stale events from peers that have been replaced by a newer peer instance
+      if (peerObj !== peer) return;
       // Skip callback when we caused the destroy ourselves (e.g. restoreHost/restoreGuest)
       if (!intentionalDestroy && callbacks.onPeerClosed) callbacks.onPeerClosed();
     });
@@ -286,6 +288,12 @@ const Network = (() => {
         );
       }
 
+      // Guard: skip if this connection is no longer the active one
+      if (connRef !== conn) {
+        clearPollTimer();
+        return;
+      }
+
       if (connRef && connRef.open) {
         console.log("[Net] Poll: conn.open=true after", attempts, "checks");
         markConnected();
@@ -347,22 +355,22 @@ const Network = (() => {
     console.log("[Net] Setting up connection, conn.open:", connRef.open);
 
     // Immediate check
-    if (connRef.open) {
+    if (connRef === conn && connRef.open) {
       markConnected();
     }
 
     // Event-based detection
     connRef.on("open", () => {
       console.log("[Net] conn 'open' event fired");
-      markConnected();
+      if (connRef === conn) markConnected();
     });
 
     connRef.on("data", (data) => {
-      if (!connected) {
+      if (!connected && connRef === conn) {
         console.log("[Net] Got data before open event — marking connected");
         markConnected();
       }
-      if (callbacks.onData) callbacks.onData(data);
+      if (connRef === conn && callbacks.onData) callbacks.onData(data);
     });
 
     connRef.on("close", () => {
@@ -385,7 +393,7 @@ const Network = (() => {
       console.log("[Net] _dc exists at setup, state:", connRef._dc.readyState);
       connRef._dc.addEventListener("open", () => {
         console.log("[Net] _dc 'open' event fired directly");
-        markConnected();
+        if (connRef === conn) markConnected();
       });
     }
 
@@ -409,7 +417,7 @@ const Network = (() => {
         console.log("[Net] PC datachannel event, state:", e.channel.readyState);
         e.channel.addEventListener("open", () => {
           console.log("[Net] PC datachannel opened directly");
-          markConnected();
+          if (connRef === conn) markConnected();
         });
       });
     }
