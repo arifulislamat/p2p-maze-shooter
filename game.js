@@ -988,6 +988,97 @@ const Game = (() => {
   // ---- Online UI ----
   // ======================================================
 
+  // ---- Build and launch (or re-launch) a host room ----
+  // Pass existingCode to reuse the same room code (e.g. after a drop while
+  // waiting in lobby). Pass null/undefined to generate a fresh code.
+  function setupHostRoom(existingCode) {
+    const isRetry = !!existingCode;
+    document.getElementById("connectionStatus").textContent = isRetry
+      ? "Reconnecting room..."
+      : "Creating room...";
+    document.getElementById("connectionStatus").className = "";
+
+    const hostCallbacks = {
+      onReady: (roomCode) => {
+        document.getElementById("roomCode").textContent = roomCode;
+        const shareLink = document.getElementById("shareLink");
+        const url = buildShareLink(roomCode);
+        if (shareLink) {
+          shareLink.href = url;
+          shareLink.textContent = url;
+        }
+        document.getElementById("connectionStatus").textContent =
+          "Waiting for opponent to join...";
+      },
+      onConnected: () => {
+        document.getElementById("connectionStatus").textContent =
+          "Opponent connected! Starting game...";
+        document.getElementById("connectionStatus").className =
+          "status-connected";
+
+        // Start game as host, then send config to guest
+        setTimeout(() => {
+          startOnlineGame(true);
+          Network.send({
+            type: "config",
+            mazeKey: selectedMazeKey,
+            mazeOrder: mazeOrder,
+          });
+        }, 500);
+      },
+      onData: handleNetworkData,
+      // While still waiting in lobby, auto-relaunch with the same room code
+      // instead of tearing down to the lobby screen.
+      onDisconnected: () => {
+        const code = Network.getLastRoomCode();
+        if (
+          (gameMode !== "online-host" && gameMode !== "online-guest") &&
+          code
+        ) {
+          console.log(
+            "[Game] Host lobby disconnect — relaunching same room:",
+            code,
+          );
+          setTimeout(() => setupHostRoom(code), 1500);
+        } else {
+          handleDisconnect();
+        }
+      },
+      onPeerClosed: () => {
+        const code = Network.getLastRoomCode();
+        if (
+          (gameMode !== "online-host" && gameMode !== "online-guest") &&
+          code
+        ) {
+          console.log("[Game] Host peer closed in lobby — relaunching:", code);
+          setTimeout(() => setupHostRoom(code), 1500);
+        }
+      },
+      onError: (msg) => {
+        const code = Network.getLastRoomCode();
+        const isIdTaken = msg === "Room code already in use. Try again.";
+        // For transient errors (not an ID conflict) auto-retry with same code
+        if (!isIdTaken && code && gameMode !== "online-host") {
+          console.warn("[Game] Host lobby error — retrying:", msg);
+          document.getElementById("connectionStatus").textContent =
+            "Connection error. Retrying...";
+          document.getElementById("connectionStatus").className = "";
+          setTimeout(() => setupHostRoom(code), 2000);
+        } else {
+          document.getElementById("connectionStatus").textContent = msg;
+          document.getElementById("connectionStatus").className =
+            "status-error";
+        }
+      },
+    };
+
+    if (existingCode) {
+      Network.restoreHost(existingCode, hostCallbacks);
+    } else {
+      Network.createHost(hostCallbacks);
+    }
+  }
+
   function showOnlineUI(mode) {
     document.getElementById("lobby").style.display = "none";
     document.getElementById("connectionUI").style.display = "block";
@@ -995,47 +1086,7 @@ const Game = (() => {
     if (mode === "host") {
       document.getElementById("hostUI").style.display = "block";
       document.getElementById("joinUI").style.display = "none";
-      document.getElementById("connectionStatus").textContent =
-        "Creating room...";
-      document.getElementById("connectionStatus").className = "";
-
-      Network.createHost({
-        onReady: (roomCode) => {
-          document.getElementById("roomCode").textContent = roomCode;
-          const shareLink = document.getElementById("shareLink");
-          const url = buildShareLink(roomCode);
-          if (shareLink) {
-            shareLink.href = url;
-            shareLink.textContent = url;
-          }
-          document.getElementById("connectionStatus").textContent =
-            "Waiting for opponent to join...";
-        },
-        onConnected: () => {
-          document.getElementById("connectionStatus").textContent =
-            "Opponent connected! Starting game...";
-          document.getElementById("connectionStatus").className =
-            "status-connected";
-
-          // Start game as host, then send config to guest
-          setTimeout(() => {
-            startOnlineGame(true);
-            // Send maze order so guest computes same deterministic spawns
-            Network.send({
-              type: "config",
-              mazeKey: selectedMazeKey,
-              mazeOrder: mazeOrder,
-            });
-          }, 500);
-        },
-        onData: handleNetworkData,
-        onDisconnected: handleDisconnect,
-        onError: (msg) => {
-          document.getElementById("connectionStatus").textContent = msg;
-          document.getElementById("connectionStatus").className =
-            "status-error";
-        },
-      });
+      setupHostRoom(null); // generate a fresh room code
     } else {
       document.getElementById("hostUI").style.display = "none";
       document.getElementById("joinUI").style.display = "block";
