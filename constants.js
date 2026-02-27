@@ -335,6 +335,7 @@ const STATE = {
   COUNTDOWN: "countdown",
   PLAYING: "playing",
   GAME_OVER: "game_over",
+  RECONNECTING: "reconnecting",
 };
 
 // Countdown duration

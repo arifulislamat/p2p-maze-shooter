@@ -548,6 +548,29 @@ const Renderer = (() => {
     ctx.textBaseline = "alphabetic";
   }
 
+  function drawReconnecting(secondsLeft) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    ctx.shadowColor = "#ffaa00";
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = "#ffaa00";
+    ctx.font = RENDER_CONFIG.FONTS.DISCONNECT;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("CONNECTION LOST", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = "#aaa";
+    ctx.font = RENDER_CONFIG.FONTS.DISCONNECT_SUB;
+    ctx.fillText(
+      `Reconnecting\u2026 (${secondsLeft}s)`,
+      CANVAS_WIDTH / 2,
+      CANVAS_HEIGHT / 2 + 25,
+    );
+    ctx.textBaseline = "alphabetic";
+  }
+
   // ---- Maze Change Announcement ----
   let mazeAnnouncement = null;
   let mazeAnnouncementTimer = 0;
@@ -806,6 +829,7 @@ const Renderer = (() => {
     drawGameOver,
     drawOnlineIndicator,
     drawDisconnected,
+    drawReconnecting,
     showMazeAnnouncement,
     drawMazeAnnouncement,
   };
