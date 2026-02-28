@@ -136,6 +136,9 @@
       window.addEventListener("DOMContentLoaded", () => {
         setTimeout(buildMazeSelector, 0);
 
+        // Auto-rejoin saved session (host/guest page reload)
+        if (Game.rejoinSession()) return;
+
         const params = new URLSearchParams(window.location.search);
         const room = params.get("room");
         if (room) {
@@ -164,14 +167,18 @@
         ></a>
         <div class="host-actions">
           <button
+            id="copyLinkBtn"
             class="btn btn-primary btn-copy"
             onclick="Game.copyShareLink()"
           >
             📋 Copy Invite Link
           </button>
+          <!-- Phase 2: shown after user copies the link -->
+          <button id="startWaitingBtn" class="btn btn-primary" onclick="Game.startWaiting()" style="display: none">
+            ▶ START WAITING FOR OPPONENT
+          </button>
         </div>
-        <div class="host-divider"></div>
-        <p id="connectionStatus" class="waiting-pulse">Creating room...</p>
+        <p id="connectionStatus" class="waiting-pulse" style="display: none">Creating room...</p>
         <div style="margin-top: 2rem">
           <button class="btn btn-secondary" onclick="Game.cancelOnline()">
             ✕ Cancel
@@ -188,6 +195,7 @@
           id="roomCodeInput"
           placeholder="ROOM CODE"
           maxlength="6"
+          minlength="6"
           autocomplete="off"
           onkeydown="if (event.key === 'Enter') Game.joinOnlineGame();"
         />
