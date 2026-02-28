@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://arifulislamat.github.io/p2p-maze-shooter/sitemap.xml
