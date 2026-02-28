@@ -490,7 +490,7 @@ const Renderer = (() => {
     ctx.fillStyle = "#666666";
     ctx.font = RENDER_CONFIG.FONTS.GAME_OVER_SUB;
     ctx.fillText(
-      isGuest ? "Waiting for host to restart..." : "Press R to restart",
+      isGuest ? "Waiting for host to restart..." : "Tap or press R to restart",
       centerX,
       centerY + 65,
     );
