@@ -21,7 +21,7 @@ const Game = (() => {
     },
     NETWORK: {
       RESYNC_INTERVAL_MS: 5000,
-      RECONNECT_TIMEOUT_MS: 30000,
+      RECONNECT_TIMEOUT_MS: 75000, // must outlast PeerJS server's ~60s peer expiry
       RECONNECT_INTERVAL_MS: 3000,
     },
     VIEWPORT: {
@@ -61,6 +61,14 @@ const Game = (() => {
   let displayMatchTimeLeft = null;
   let initialized = false;
   let lastResync = 0;
+  let lobbyRetryCount = 0;
+  const LOBBY_MAX_RETRIES = 5;
+  let lastDataReceived = 0;
+  const DATA_TIMEOUT_MS = 5000;
+  let lastCorrection = 0;
+  const CORRECTION_INTERVAL_MS = 100; // 10 Hz authority corrections
+  // Holds saved game state to restore after host page reload
+  let pendingResumeState = null;
 
   // ---- Get spawn position from active maze ----
   // Deterministic corner-based spawns that rotate each maze.
@@ -177,11 +185,11 @@ const Game = (() => {
     });
   }
 
-  function updateBombs(dt) {
+  function updateBombs(dt, skipSpawn) {
     const now = Date.now();
 
-    // Spawn new bombs periodically
-    if (now - lastBombSpawn >= BOMB_SPAWN_INTERVAL) {
+    // Spawn new bombs periodically (host only)
+    if (!skipSpawn && now - lastBombSpawn >= BOMB_SPAWN_INTERVAL) {
       spawnBomb();
       lastBombSpawn = now;
     }
@@ -238,11 +246,11 @@ const Game = (() => {
     });
   }
 
-  function updateZombies(dt) {
+  function updateZombies(dt, skipSpawn) {
     const now = Date.now();
 
-    // Spawn zombies periodically
-    if (now - lastZombieSpawn >= ZOMBIE_SPAWN_INTERVAL) {
+    // Spawn zombies periodically (host only)
+    if (!skipSpawn && now - lastZombieSpawn >= ZOMBIE_SPAWN_INTERVAL) {
       spawnZombie();
       lastZombieSpawn = now;
     }
@@ -708,6 +716,82 @@ const Game = (() => {
     });
   }
 
+  // Host sends its input to guest every frame (so guest can simulate P1 locally)
+  function sendHostInput() {
+    Network.send({
+      type: "host_input",
+      keys: {
+        up: isAnyKeyDown(GAME_CONFIG.INPUT.MOVE_UP),
+        down: isAnyKeyDown(GAME_CONFIG.INPUT.MOVE_DOWN),
+        left: isAnyKeyDown(GAME_CONFIG.INPUT.MOVE_LEFT),
+        right: isAnyKeyDown(GAME_CONFIG.INPUT.MOVE_RIGHT),
+        shoot: isAnyKeyDown(GAME_CONFIG.INPUT.SHOOT),
+      },
+    });
+  }
+
+  // Host sends lightweight authority corrections at 10 Hz
+  function sendCorrections() {
+    // Persist state at 10 Hz so a host page reload can resume mid-match
+    const code = Network.getLastRoomCode();
+    if (code) {
+      saveSession("host", code, {
+        mazeOrder,
+        selectedMazeKey,
+        mazesPlayed,
+        matchStartTime,
+        mazeRotationStart,
+        p1Score: p1.score,
+        p2Score: p2.score,
+      });
+    }
+    const mazeElapsed = (Date.now() - mazeRotationStart) / 1000;
+    const mazeTimeLeft = Math.max(0, MAZE_ROTATION_MS / 1000 - mazeElapsed);
+    const totalMatchTime = (MAZE_KEYS.length * MAZE_ROTATION_MS) / 1000;
+    const matchElapsed = (Date.now() - matchStartTime) / 1000;
+    const matchTimeLeft = Math.max(0, totalMatchTime - matchElapsed);
+
+    Network.send({
+      type: "correction",
+      mazeRotationStart: mazeRotationStart,
+      p1: {
+        x: p1.x,
+        y: p1.y,
+        dir: p1.dir,
+        health: p1.health,
+        alive: p1.alive,
+        score: p1.score,
+        respawnTimer: p1.respawnTimer,
+        freezeTimer: p1.freezeTimer,
+      },
+      p2: {
+        x: p2.x,
+        y: p2.y,
+        dir: p2.dir,
+        health: p2.health,
+        alive: p2.alive,
+        score: p2.score,
+        respawnTimer: p2.respawnTimer,
+        freezeTimer: p2.freezeTimer,
+      },
+      bombs: bombs.map((b) => ({ x: b.x, y: b.y, fuseLeft: b.fuseLeft })),
+      explosions: explosions.map((e) => ({
+        x: e.x,
+        y: e.y,
+        startTime: e.startTime,
+      })),
+      zombies: zombies.map((z) => ({ x: z.x, y: z.y, spawnTime: z.spawnTime })),
+      gameState,
+      winner,
+      countdownValue,
+      mazeKey: selectedMazeKey,
+      mazeTimeLeft,
+      matchTimeLeft,
+      mazesPlayed,
+      isDraw,
+    });
+  }
+
   // Host broadcasts full game state to guest every frame
   function broadcastState(fullSync) {
     const mazeElapsed = (Date.now() - mazeRotationStart) / 1000;
@@ -819,8 +903,131 @@ const Game = (() => {
     }
   }
 
+  // Guest applies lightweight host corrections (10 Hz) — position targets are
+  // stored and smoothly converged toward each physics tick.  Authority state
+  // (health, score, alive, game state) is snapped immediately.
+  const SNAP_DISTANCE_SQ = 900; // 30px — above this, snap instead of lerp
+  const CORRECTION_RATE = 0.15; // per-tick exponential lerp toward host pos
+  let correctionTarget = { p1: null, p2: null };
+
+  function applyCorrections(data) {
+    // Detect maze change (host rotated to a new maze)
+    if (data.mazeKey && data.mazeKey !== selectedMazeKey) {
+      activeMaze = parseMaze(data.mazeKey);
+      selectedMazeKey = data.mazeKey;
+      Renderer.invalidateMazeCache();
+      Renderer.showMazeAnnouncement(activeMaze.name);
+      Sound.play("mazeChange", CONFIG.CANVAS.WIDTH / 2, CONFIG.CANVAS.HEIGHT / 2);
+    }
+
+    // Sync maze rotation timestamp
+    if (data.mazeRotationStart !== undefined) {
+      mazeRotationStart = data.mazeRotationStart;
+    }
+
+    // Store position targets for smooth per-tick convergence
+    correctionTarget.p1 = { x: data.p1.x, y: data.p1.y };
+    correctionTarget.p2 = { x: data.p2.x, y: data.p2.y };
+
+    // Direction + authority state — snap immediately
+    [
+      { local: p1, remote: data.p1 },
+      { local: p2, remote: data.p2 },
+    ].forEach(({ local, remote }) => {
+      local.dir = remote.dir;
+      local.health = remote.health;
+      local.alive = remote.alive;
+      local.score = remote.score;
+      local.respawnTimer = remote.respawnTimer;
+      if (remote.freezeTimer !== undefined) local.freezeTimer = remote.freezeTimer;
+    });
+
+    // Host-only entities — guest doesn't spawn these, accept host data
+    if (data.bombs) bombs = data.bombs;
+    if (data.explosions) explosions = data.explosions;
+    if (data.zombies) zombies = data.zombies;
+
+    // Game state authority
+    gameState = data.gameState;
+    winner = data.winner;
+    countdownValue = data.countdownValue;
+    if (data.mazeTimeLeft !== undefined) displayMazeTimeLeft = data.mazeTimeLeft;
+    if (data.matchTimeLeft !== undefined) displayMatchTimeLeft = data.matchTimeLeft;
+    if (data.mazesPlayed !== undefined) mazesPlayed = data.mazesPlayed;
+    if (data.isDraw !== undefined) isDraw = data.isDraw;
+  }
+
+  // Smooth per-tick correction: converge toward host positions each physics frame
+  function applyCorrectionSmoothing() {
+    [
+      { local: p1, target: correctionTarget.p1, key: "p1" },
+      { local: p2, target: correctionTarget.p2, key: "p2" },
+    ].forEach(({ local, target, key }) => {
+      if (!target) return;
+      const dx = target.x - local.x;
+      const dy = target.y - local.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > SNAP_DISTANCE_SQ) {
+        // Large divergence (teleport/respawn) — snap
+        local.x = target.x;
+        local.y = target.y;
+        correctionTarget[key] = null;
+      } else if (distSq > 0.25) {
+        local.x += dx * CORRECTION_RATE;
+        local.y += dy * CORRECTION_RATE;
+      } else {
+        correctionTarget[key] = null; // close enough
+      }
+    });
+  }
+
+  // ---- Render Interpolation Helpers ----
+  // Save physics positions before each tick so the renderer can interpolate
+  // between the previous and current state for sub-tick smoothness.
+  function savePhysicsPositions() {
+    p1.prevX = p1.x; p1.prevY = p1.y;
+    p2.prevX = p2.x; p2.prevY = p2.y;
+    for (let i = 0; i < bullets.length; i++) {
+      bullets[i].prevX = bullets[i].x;
+      bullets[i].prevY = bullets[i].y;
+    }
+  }
+
+  function interpolateForRender(alpha) {
+    // Players
+    p1._physX = p1.x; p1._physY = p1.y;
+    p2._physX = p2.x; p2._physY = p2.y;
+    if (p1.prevX !== undefined) {
+      p1.x = p1.prevX + (p1.x - p1.prevX) * alpha;
+      p1.y = p1.prevY + (p1.y - p1.prevY) * alpha;
+    }
+    if (p2.prevX !== undefined) {
+      p2.x = p2.prevX + (p2.x - p2.prevX) * alpha;
+      p2.y = p2.prevY + (p2.y - p2.prevY) * alpha;
+    }
+    // Bullets
+    for (let i = 0; i < bullets.length; i++) {
+      const b = bullets[i];
+      b._physX = b.x; b._physY = b.y;
+      if (b.prevX !== undefined) {
+        b.x = b.prevX + (b.x - b.prevX) * alpha;
+        b.y = b.prevY + (b.y - b.prevY) * alpha;
+      }
+    }
+  }
+
+  function restorePhysicsPositions() {
+    p1.x = p1._physX; p1.y = p1._physY;
+    p2.x = p2._physX; p2.y = p2._physY;
+    for (let i = 0; i < bullets.length; i++) {
+      bullets[i].x = bullets[i]._physX;
+      bullets[i].y = bullets[i]._physY;
+    }
+  }
+
   // Route incoming network data
   function handleNetworkData(data) {
+    lastDataReceived = Date.now();
     // Config is a one-time setup message — always handle it
     if (data.type === "config") {
       selectedMazeKey = data.mazeKey;
@@ -834,13 +1041,57 @@ const Game = (() => {
       return;
     }
 
+    // Resync after reconnection — update maze state without resetting match
+    if (data.type === "resync") {
+      if (data.mazeKey && data.mazeKey !== selectedMazeKey) {
+        selectedMazeKey = data.mazeKey;
+        activeMaze = parseMaze(data.mazeKey);
+        Renderer.invalidateMazeCache();
+      }
+      if (data.mazeOrder) mazeOrder = data.mazeOrder;
+      if (data.mazesPlayed !== undefined) mazesPlayed = data.mazesPlayed;
+      if (data.matchStartTime !== undefined) matchStartTime = data.matchStartTime;
+      if (data.mazeRotationStart !== undefined) mazeRotationStart = data.mazeRotationStart;
+      return;
+    }
+
+    // Guest (re)joined mid-game — bootstrap them into the running match.
+    // Send config so the guest calls startOnlineGame(), then resync + full
+    // state so it converges to the current match state.
+    if (data.type === "ready" && gameMode === "online-host") {
+      console.log("[Game] Guest sent 'ready' while game is running — bootstrapping");
+      Network.send({
+        type: "config",
+        mazeKey: selectedMazeKey,
+        mazeOrder: mazeOrder,
+      });
+      Network.send({
+        type: "resync",
+        mazeKey: selectedMazeKey,
+        mazeOrder: mazeOrder,
+        mazesPlayed: mazesPlayed,
+        matchStartTime: matchStartTime,
+        mazeRotationStart: mazeRotationStart,
+      });
+      broadcastState(true);
+      return;
+    }
+
     if (gameMode === "online-host") {
       // Host receives input from guest
       if (data.type === "input") {
         remoteInput = data.keys;
       }
     } else if (gameMode === "online-guest") {
-      // Guest receives state from host
+      // Guest receives host's input for local P1 simulation
+      if (data.type === "host_input") {
+        remoteInput = data.keys;
+      }
+      // Guest receives authority corrections from host (10 Hz)
+      if (data.type === "correction") {
+        applyCorrections(data);
+      }
+      // Backward compat: full state (used after reconnection broadcastState)
       if (data.type === "state" || data.type === "state_sync") {
         applyRemoteState(data);
       }
@@ -899,9 +1150,23 @@ const Game = (() => {
       onConnected: () => {
         console.log("[Game] Reconnect successful!");
         stopReconnecting();
-        // Re-send config so guest can resync maze state
+        // Re-send resync so guest can restore maze state without resetting match
         if (gameMode === "online-host") {
-          Network.send({ type: "config", mazeKey: selectedMazeKey, mazeOrder: mazeOrder });
+          Network.send({
+            type: "resync",
+            mazeKey: selectedMazeKey,
+            mazeOrder: mazeOrder,
+            mazesPlayed: mazesPlayed,
+            matchStartTime: matchStartTime,
+            mazeRotationStart: mazeRotationStart,
+          });
+          // Immediately follow with a full state update so guest has positions
+          broadcastState(true);
+        }
+        // Guest: tell host we're ready (host may have reloaded and is in lobby
+        // waiting for the "ready" handshake before starting the game)
+        if (gameMode === "online-guest") {
+          Network.send({ type: "ready" });
         }
       },
       onData: handleNetworkData,
@@ -926,21 +1191,61 @@ const Game = (() => {
   // ---- Page visibility: proactively reconnect on foreground ----
   function handleVisibilityChange() {
     if (document.visibilityState !== "visible") return;
-    if (gameMode !== "online-host" && gameMode !== "online-guest") return;
-    if (isReconnecting) return; // already recovering
-    if (Network.isConnected()) return; // still alive
-    console.log("[Game] Tab foregrounded — connection lost while backgrounded, reconnecting");
-    startReconnecting();
+
+    // Mid-game reconnection
+    if (gameMode === "online-host" || gameMode === "online-guest") {
+      if (isReconnecting) return; // already recovering
+      if (Network.isConnected()) return; // still alive
+      console.log("[Game] Tab foregrounded — connection lost while backgrounded, reconnecting");
+      startReconnecting();
+      return;
+    }
+
+    // Lobby phase: if we were waiting for opponent and peer died while backgrounded,
+    // re-register with the same room code
+    if (Network.getIsHost() && Network.getLastRoomCode() && !Network.isConnected()) {
+      console.log("[Game] Tab foregrounded in lobby — re-registering room");
+      const code = Network.getLastRoomCode();
+      // Small delay to let PeerJS server expire old ID
+      document.getElementById("connectionStatus").textContent = "Reconnecting room...";
+      document.getElementById("connectionStatus").style.display = "";
+      setTimeout(() => setupHostRoom(code), 2000);
+    }
   }
 
   // Return to lobby screen
+  // ---- Session persistence (survives page reload) ----
+  const SESSION_KEY = "p2p-maze-shooter";
+
+  function saveSession(role, roomCode, extra) {
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ role, roomCode, ...(extra || {}) }));
+    } catch (_) { /* private browsing / quota */ }
+  }
+
+  function clearSession() {
+    try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
+  }
+
+  function getSavedSession() {
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      if (s && s.role && s.roomCode) return s;
+    } catch (_) {}
+    return null;
+  }
+
   function returnToLobby() {
+    clearSession();
     stopReconnecting();
     Network.disconnect();
     gameMode = "lobby";
     gameState = STATE.LOBBY;
     isDisconnected = false;
     isReconnecting = false;
+    lobbyRetryCount = 0;
     remoteInput = {
       up: false,
       down: false,
@@ -982,6 +1287,14 @@ const Game = (() => {
       document.execCommand("copy");
       temp.remove();
     }
+    // Swap: hide copy button, reveal start-waiting button
+    const copyBtn = document.getElementById("copyLinkBtn");
+    if (copyBtn) copyBtn.style.display = "none";
+    const startBtn = document.getElementById("startWaitingBtn");
+    if (startBtn) {
+      startBtn.style.display = "";
+      startBtn.textContent = "▶ START WAITING FOR OPPONENT";
+    }
   }
 
   // ======================================================
@@ -991,8 +1304,8 @@ const Game = (() => {
   // ---- Build and launch (or re-launch) a host room ----
   // Pass existingCode to reuse the same room code (e.g. after a drop while
   // waiting in lobby). Pass null/undefined to generate a fresh code.
-  function setupHostRoom(existingCode) {
-    const isRetry = !!existingCode;
+  function setupHostRoom(existingCode, freshCreate) {
+    const isRetry = !!existingCode && !freshCreate;
     document.getElementById("connectionStatus").textContent = isRetry
       ? "Reconnecting room..."
       : "Creating room...";
@@ -1016,22 +1329,45 @@ const Game = (() => {
           "Waiting for opponent to join...";
       },
       onConnected: () => {
+        lobbyRetryCount = 0;
         document.getElementById("connectionStatus").textContent =
-          "Opponent connected! Starting game...";
-        document.getElementById("connectionStatus").className =
-          "status-connected";
-
-        // Start game as host, then send config to guest
-        setTimeout(() => {
-          startOnlineGame(true);
-          Network.send({
-            type: "config",
-            mazeKey: selectedMazeKey,
-            mazeOrder: mazeOrder,
-          });
-        }, 500);
+          "Opponent connected! Waiting for ready signal...";
+        document.getElementById("connectionStatus").className = "status-connected";
+        // Don't start yet — wait for guest's "ready" message
       },
-      onData: handleNetworkData,
+      onData: (data) => {
+        if (data.type === "ready") {
+          // Guest is ready — start the game (works both from lobby and mid-game)
+          if (gameMode === "online-host") {
+            // Already running — let handleNetworkData bootstrap the guest
+            handleNetworkData(data);
+          } else {
+            // First start (or host reload resume) — launch the match
+            document.getElementById("connectionStatus").textContent = "Starting game...";
+            setTimeout(() => {
+              startOnlineGame(true);
+              Network.send({
+                type: "config",
+                mazeKey: selectedMazeKey,
+                mazeOrder: mazeOrder,
+              });
+              // Always follow with resync + full state so guest gets correct
+              // maze progress and scores (critical after host page reload)
+              Network.send({
+                type: "resync",
+                mazeKey: selectedMazeKey,
+                mazeOrder: mazeOrder,
+                mazesPlayed: mazesPlayed,
+                matchStartTime: matchStartTime,
+                mazeRotationStart: mazeRotationStart,
+              });
+              broadcastState(true);
+            }, 300);
+          }
+          return;
+        }
+        handleNetworkData(data);
+      },
       // While still waiting in lobby, auto-relaunch with the same room code
       // instead of tearing down to the lobby screen.
       onDisconnected: () => {
@@ -1040,8 +1376,18 @@ const Game = (() => {
           (gameMode !== "online-host" && gameMode !== "online-guest") &&
           code
         ) {
+          lobbyRetryCount++;
+          if (lobbyRetryCount > LOBBY_MAX_RETRIES) {
+            document.getElementById("connectionStatus").textContent =
+              "Failed to create room. Please try again.";
+            document.getElementById("connectionStatus").className = "status-error";
+            document.getElementById("startWaitingBtn").style.display = "";
+            document.getElementById("startWaitingBtn").textContent = "🔄 RETRY";
+            lobbyRetryCount = 0;
+            return;
+          }
           console.log(
-            "[Game] Host lobby disconnect — relaunching same room:",
+            "[Game] Host lobby disconnect — relaunching same room (" + lobbyRetryCount + "/" + LOBBY_MAX_RETRIES + "):",
             code,
           );
           setTimeout(() => setupHostRoom(code), 1500);
@@ -1056,7 +1402,17 @@ const Game = (() => {
           (gameMode !== "online-host" && gameMode !== "online-guest") &&
           code
         ) {
-          console.log("[Game] Host peer closed in lobby — relaunching:", code);
+          lobbyRetryCount++;
+          if (lobbyRetryCount > LOBBY_MAX_RETRIES) {
+            document.getElementById("connectionStatus").textContent =
+              "Failed to create room. Please try again.";
+            document.getElementById("connectionStatus").className = "status-error";
+            document.getElementById("startWaitingBtn").style.display = "";
+            document.getElementById("startWaitingBtn").textContent = "🔄 RETRY";
+            lobbyRetryCount = 0;
+            return;
+          }
+          console.log("[Game] Host peer closed in lobby — relaunching (" + lobbyRetryCount + "/" + LOBBY_MAX_RETRIES + "):", code);
           setTimeout(() => setupHostRoom(code), 1500);
         } else {
           handleDisconnect();
@@ -1071,10 +1427,20 @@ const Game = (() => {
         // backgrounded and the server hasn't expired it yet). Retry silently
         // with a slightly longer delay to give the server time to release it.
         if (code && gameMode !== "online-host" && gameMode !== "online-guest") {
-          console.warn("[Game] Host lobby error — retrying:", msg);
+          lobbyRetryCount++;
+          if (lobbyRetryCount > LOBBY_MAX_RETRIES) {
+            document.getElementById("connectionStatus").textContent =
+              "Failed to create room. Please try again.";
+            document.getElementById("connectionStatus").className = "status-error";
+            document.getElementById("startWaitingBtn").style.display = "";
+            document.getElementById("startWaitingBtn").textContent = "🔄 RETRY";
+            lobbyRetryCount = 0;
+            return;
+          }
+          console.warn("[Game] Host lobby error — retrying (" + lobbyRetryCount + "/" + LOBBY_MAX_RETRIES + "):", msg);
           document.getElementById("connectionStatus").textContent = isIdTaken
-            ? "Reconnecting room..."
-            : "Connection error. Retrying...";
+            ? "Reconnecting room... (" + lobbyRetryCount + "/" + LOBBY_MAX_RETRIES + ")"
+            : "Connection error. Retrying... (" + lobbyRetryCount + "/" + LOBBY_MAX_RETRIES + ")";
           document.getElementById("connectionStatus").className = "";
           retryScheduled = true;
           setTimeout(() => setupHostRoom(code), isIdTaken ? 3000 : 2000);
@@ -1086,8 +1452,10 @@ const Game = (() => {
       },
     };
 
-    if (existingCode) {
+    if (existingCode && !freshCreate) {
       Network.restoreHost(existingCode, hostCallbacks);
+    } else if (existingCode && freshCreate) {
+      Network.createHostWithCode(existingCode, hostCallbacks);
     } else {
       Network.createHost(hostCallbacks);
     }
@@ -1100,7 +1468,21 @@ const Game = (() => {
     if (mode === "host") {
       document.getElementById("hostUI").style.display = "block";
       document.getElementById("joinUI").style.display = "none";
-      setupHostRoom(null); // generate a fresh room code
+      // Phase 1: generate room code and show share link, but do NOT register with PeerJS yet
+      const roomCode = Network.generateRoomCode();
+      Network.setLastRoomCode(roomCode);
+      document.getElementById("roomCode").textContent = roomCode;
+      const shareLink = document.getElementById("shareLink");
+      const url = buildShareLink(roomCode);
+      if (shareLink) {
+        shareLink.href = url;
+        shareLink.textContent = url;
+      }
+      // Show copy button, hide start-waiting button and status
+      const copyBtn = document.getElementById("copyLinkBtn");
+      if (copyBtn) copyBtn.style.display = "";
+      document.getElementById("startWaitingBtn").style.display = "none";
+      document.getElementById("connectionStatus").style.display = "none";
     } else {
       document.getElementById("hostUI").style.display = "none";
       document.getElementById("joinUI").style.display = "block";
@@ -1110,13 +1492,25 @@ const Game = (() => {
     }
   }
 
+  function startWaiting() {
+    lobbyRetryCount = 0;
+    // Hide the start button, show the status text
+    document.getElementById("startWaitingBtn").style.display = "none";
+    document.getElementById("connectionStatus").style.display = "";
+    document.getElementById("connectionStatus").textContent = "Creating room...";
+    document.getElementById("connectionStatus").className = "";
+    // Now actually register with PeerJS using the pre-generated room code
+    const roomCode = Network.getLastRoomCode();
+    setupHostRoom(roomCode, true); // freshCreate = true → uses createHostWithCode
+  }
+
   function joinOnlineGame() {
     const input = document.getElementById("roomCodeInput");
     const code = input.value.trim().toUpperCase();
 
-    if (code.length < 4) {
+    if (code.length !== 6) {
       document.getElementById("joinStatus").textContent =
-        "Enter a valid room code";
+        "Room code must be 6 characters";
       document.getElementById("joinStatus").className = "status-error";
       return;
     }
@@ -1129,6 +1523,8 @@ const Game = (() => {
         document.getElementById("joinStatus").textContent =
           "Connected! Waiting for host to start...";
         document.getElementById("joinStatus").className = "status-connected";
+        // Tell host we're ready to receive
+        Network.send({ type: "ready" });
       },
       onData: handleNetworkData,
       onDisconnected: handleDisconnect,
@@ -1140,11 +1536,18 @@ const Game = (() => {
   }
 
   function cancelOnline() {
+    clearSession();
     Network.disconnect();
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("hostUI").style.display = "none";
     document.getElementById("joinUI").style.display = "none";
     document.getElementById("lobby").style.display = "block";
+    // Reset deferred room creation state
+    lobbyRetryCount = 0;
+    const copyBtn = document.getElementById("copyLinkBtn");
+    if (copyBtn) copyBtn.style.display = "";
+    document.getElementById("startWaitingBtn").style.display = "none";
+    document.getElementById("connectionStatus").style.display = "none";
   }
 
   // ======================================================
@@ -1167,25 +1570,44 @@ const Game = (() => {
       // If we've fallen behind by more than one extra step, discard the
       // surplus rather than catch-up and run physics multiple times fast.
       if (physicsAccumulator >= PHYSICS_STEP_MS) physicsAccumulator = 0;
+
+      // Snapshot positions BEFORE physics for render interpolation
+      savePhysicsPositions();
     }
 
     // --- Update ---
     if (gameMode === "online-guest") {
-      // Guest: only send input, state arrives via onData callback
-      sendLocalInput();
-      // Locally interpolate respawn timers for smooth display (host controls alive state)
-      if (runPhysics && gameState === STATE.PLAYING) {
-        [p1, p2].forEach((player) => {
-          if (!player.alive && player.respawnTimer > 0) {
-            player.respawnTimer = Math.max(
-              0,
-              player.respawnTimer - PHYSICS_STEP_MS,
-            );
-          }
-        });
+      // Guest runs full local physics at 60 Hz for smooth rendering
+      if (runPhysics) {
+        // Send input at physics rate (60 Hz) — no excess messages
+        sendLocalInput();
+        if (gameState === STATE.COUNTDOWN) {
+          updateCountdown();
+        }
+        if (gameState === STATE.PLAYING) {
+          // P1 = remote (host's input), P2 = local (guest's WASD)
+          processRemoteInput(p1);
+          processPlayerInput(
+            p2,
+            GAME_CONFIG.INPUT.MOVE_UP,
+            GAME_CONFIG.INPUT.MOVE_DOWN,
+            GAME_CONFIG.INPUT.MOVE_LEFT,
+            GAME_CONFIG.INPUT.MOVE_RIGHT,
+            GAME_CONFIG.INPUT.SHOOT,
+          );
+
+          updateBullets();
+          // Bomb/zombie: tick existing ones but DON'T spawn new ones (host is authoritative)
+          updateBombs(PHYSICS_STEP_MS, true);
+          updateZombies(PHYSICS_STEP_MS, true);
+          updateRespawns(PHYSICS_STEP_MS);
+          // Smooth per-frame correction convergence toward host positions
+          applyCorrectionSmoothing();
+          // NO checkMazeRotation — host sends maze changes via corrections
+        }
       }
     } else if (runPhysics) {
-      // Host: run all physics at fixed 60 Hz
+      // Host / local: run all physics at fixed 60 Hz
       if (gameState === STATE.COUNTDOWN) {
         updateCountdown();
       }
@@ -1209,19 +1631,42 @@ const Game = (() => {
         checkMazeRotation();
       }
 
-      // Host broadcasts full state to guest each frame
+      // Host: send input to guest every tick (60Hz) + corrections at 10Hz
       if (gameMode === "online-host") {
+        sendHostInput();
         const now = Date.now();
         const fullSync =
           now - lastResync >= GAME_CONFIG.NETWORK.RESYNC_INTERVAL_MS;
-        broadcastState(fullSync);
-        if (fullSync) {
-          lastResync = now;
+        if (fullSync || now - lastCorrection >= CORRECTION_INTERVAL_MS) {
+          sendCorrections();
+          lastCorrection = now;
+          if (fullSync) {
+            lastResync = now;
+          }
         }
       }
     }
 
-    // --- Render (always, all modes) ---
+    // Guest: detect host gone silent
+    if (
+      gameMode === "online-guest" &&
+      !isDisconnected &&
+      !isReconnecting &&
+      lastDataReceived > 0 &&
+      Date.now() - lastDataReceived > DATA_TIMEOUT_MS
+    ) {
+      console.warn("[Game] No data from host for " + DATA_TIMEOUT_MS + "ms — triggering reconnect");
+      lastDataReceived = 0; // prevent repeated triggers
+      handleDisconnect();
+    }
+
+    // --- Render with sub-tick interpolation ---
+    // alpha ∈ [0,1): 0 = right after physics tick, →1 = just before next tick.
+    // Standard fixed-timestep interpolation: renders one tick behind for
+    // perfectly smooth motion at any display refresh rate.
+    const renderAlpha = physicsAccumulator / PHYSICS_STEP_MS;
+    interpolateForRender(renderAlpha);
+
     Renderer.drawArena();
     Renderer.drawMaze();
     Renderer.drawPlayer(p1, "P1");
@@ -1257,7 +1702,10 @@ const Game = (() => {
     // Maze change announcement
     Renderer.drawMazeAnnouncement(rawDt);
 
-    // Overlays
+    // Restore physics positions after rendering so game state stays accurate
+    restorePhysicsPositions();
+
+    // Overlays (drawn AFTER restore — they don't use entity positions)
     if (gameState === STATE.COUNTDOWN) {
       Renderer.drawCountdown(countdownValue);
     }
@@ -1546,16 +1994,25 @@ const Game = (() => {
   function startOnlineGame(isHost) {
     gameMode = isHost ? "online-host" : "online-guest";
     isDisconnected = false;
+
+    // Check for saved game state to resume (host page reload mid-match)
+    const resume = isHost && pendingResumeState ? pendingResumeState : null;
+    if (resume) pendingResumeState = null;
+
     // Only host shuffles maze order; guest receives it via config message
     if (isHost) {
-      mazeOrder = shuffleMazeOrder();
+      mazeOrder = resume && resume.mazeOrder ? resume.mazeOrder : shuffleMazeOrder();
     }
-    mazesPlayed = 0;
-    selectedMazeKey = mazeOrder[0];
+    mazesPlayed = resume ? (resume.mazesPlayed ?? 0) : 0;
+    selectedMazeKey = resume && resume.selectedMazeKey ? resume.selectedMazeKey : mazeOrder[0];
     activeMaze = parseMaze(selectedMazeKey);
     Renderer.invalidateMazeCache();
-    mazeRotationStart = Date.now();
-    matchStartTime = Date.now();
+    mazeRotationStart = resume && resume.mazeRotationStart ? resume.mazeRotationStart : Date.now();
+    matchStartTime = resume && resume.matchStartTime ? resume.matchStartTime : Date.now();
+
+    // Persist session so a page reload can rejoin the same room
+    const code = Network.getLastRoomCode();
+    if (code) saveSession(isHost ? "host" : "guest", code);
 
     // Hide UI, show game
     document.getElementById("lobby").style.display = "none";
@@ -1564,11 +2021,14 @@ const Game = (() => {
     document.getElementById("controls-help").style.display = "block";
     updateControlsHelp();
     resizeCanvas();
-    resizeCanvas();
 
     // Create players
     p1 = createPlayer(1);
     p2 = createPlayer(2);
+    if (resume) {
+      p1.score = resume.p1Score ?? 0;
+      p2.score = resume.p2Score ?? 0;
+    }
     bullets = [];
     bombs = [];
     explosions = [];
@@ -1577,11 +2037,71 @@ const Game = (() => {
     lastZombieSpawn = Date.now();
 
     init();
-    startCountdown();
+    if (resume) {
+      // Resume mid-match: jump to PLAYING, skip the 3-2-1 countdown
+      gameState = STATE.PLAYING;
+    } else {
+      startCountdown();
+    }
     lastResync = Date.now();
+    lastDataReceived = Date.now();
     lastTime = performance.now();
     physicsAccumulator = 0;
     requestAnimationFrame(gameLoop);
+  }
+
+  // ---- Rejoin a saved session after page reload ----
+  function rejoinSession() {
+    const s = getSavedSession();
+    if (!s) return false;
+    console.log("[Game] Resuming saved session:", s.role, s.roomCode);
+    if (s.role === "host") {
+      // Show host UI, skip copy-link flow, go straight to waiting
+      showOnlineUI("host");
+      // Override with saved code
+      Network.setLastRoomCode(s.roomCode);
+      document.getElementById("roomCode").textContent = s.roomCode;
+      const shareLink = document.getElementById("shareLink");
+      const url = buildShareLink(s.roomCode);
+      if (shareLink) {
+        shareLink.href = url;
+        shareLink.textContent = url;
+      }
+      // Skip copy button, go straight to "Creating room..."
+      const copyBtn = document.getElementById("copyLinkBtn");
+      if (copyBtn) copyBtn.style.display = "none";
+      document.getElementById("startWaitingBtn").style.display = "none";
+      document.getElementById("connectionStatus").style.display = "";
+      document.getElementById("connectionStatus").textContent = "Rejoining room...";
+      document.getElementById("connectionStatus").className = "";
+      // Stash full game state so startOnlineGame can resume mid-match
+      pendingResumeState = s;
+      setupHostRoom(s.roomCode, true);
+    } else {
+      // Guest: auto-join the room
+      showOnlineUI("join");
+      const input = document.getElementById("roomCodeInput");
+      if (input) input.value = s.roomCode;
+      document.getElementById("joinStatus").textContent = "Reconnecting...";
+      document.getElementById("joinStatus").className = "";
+      Network.joinGame(s.roomCode, {
+        onConnected: () => {
+          document.getElementById("joinStatus").textContent =
+            "Connected! Waiting for host to start...";
+          document.getElementById("joinStatus").className = "status-connected";
+          Network.send({ type: "ready" });
+        },
+        onData: handleNetworkData,
+        onDisconnected: handleDisconnect,
+        onError: (msg) => {
+          document.getElementById("joinStatus").textContent = msg;
+          document.getElementById("joinStatus").className = "status-error";
+          // Clear session on hard failure so we don't loop
+          clearSession();
+        },
+      });
+    }
+    return true;
   }
 
   return {
@@ -1593,6 +2113,8 @@ const Game = (() => {
     cancelOnline,
     copyShareLink,
     returnToLobby,
+    startWaiting,
+    rejoinSession,
     getState: () => ({ p1, p2, bullets, gameState, winner, gameMode }),
   };
 })();

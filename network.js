@@ -12,29 +12,14 @@ const Network = (() => {
     ICE_SERVERS: [
       // Google STUN
       { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun.l.google.com:5349" },
       { urls: "stun:stun1.l.google.com:3478" },
-      { urls: "stun:stun1.l.google.com:5349" },
       { urls: "stun:stun2.l.google.com:19302" },
-      { urls: "stun:stun2.l.google.com:5349" },
       { urls: "stun:stun3.l.google.com:3478" },
-      { urls: "stun:stun3.l.google.com:5349" },
       { urls: "stun:stun4.l.google.com:19302" },
-      { urls: "stun:stun4.l.google.com:5349" },
       // VoIP Community STUN
-      { urls: "stun:stun01.sipphone.com" },
       { urls: "stun:stun.ekiga.net" },
-      { urls: "stun:stun.fwdnet.net" },
-      { urls: "stun:stun.ideasip.com" },
-      { urls: "stun:stun.iptel.org" },
-      { urls: "stun:stun.rixtelecom.se" },
-      { urls: "stun:stun.schlund.de" },
-      { urls: "stun:stunserver.org" },
-      { urls: "stun:stun.softjoys.com" },
-      { urls: "stun:stun.voiparound.com" },
       { urls: "stun:stun.voipbuster.com" },
       { urls: "stun:stun.voipstunt.com" },
-      { urls: "stun:stun.voxgratia.org" },
       { urls: "stun:stun.xten.com" },
     ],
     OPEN_POLL_INTERVAL_MS: 100,
@@ -49,9 +34,9 @@ const Network = (() => {
   let openPollTimer = null;
   let connected = false;
   let lastRoomCode = null;
-  // Set to true before intentionally calling peer.destroy() so the 'close'
-  // event doesn't incorrectly fire onPeerClosed into the reconnect callbacks.
-  let intentionalDestroy = false;
+  // Tracks peers that we intentionally destroyed so their async 'close' event
+  // doesn't incorrectly fire onPeerClosed into reconnect callbacks.
+  const intentionallyDestroyedPeers = new Set();
 
   // Generate a room code (no confusable chars)
   function generateRoomCode() {
@@ -86,8 +71,52 @@ const Network = (() => {
       // Drop stale events from peers that have been replaced by a newer peer instance
       if (peerObj !== peer) return;
       // Skip callback when we caused the destroy ourselves (e.g. restoreHost/restoreGuest)
-      if (!intentionalDestroy && callbacks.onPeerClosed) callbacks.onPeerClosed();
+      if (intentionallyDestroyedPeers.has(peerObj)) {
+        intentionallyDestroyedPeers.delete(peerObj);
+        return;
+      }
+      if (callbacks.onPeerClosed) callbacks.onPeerClosed();
     });
+  }
+
+  // ---- Host: create a room with an existing code (Phase 2 of deferred creation) ----
+  function createHostWithCode(roomCode, cbs) {
+    isHost = true;
+    connected = false;
+    callbacks = cbs;
+    lastRoomCode = roomCode;
+    const peerId = NETWORK_CONFIG.PEER_PREFIX + roomCode;
+
+    console.log("[Net] Creating host peer with code:", peerId);
+    peer = new Peer(peerId, PEER_CONFIG);
+
+    peer.on("open", (id) => {
+      console.log("[Net] Host peer open, id:", id);
+      if (callbacks.onReady) callbacks.onReady(roomCode);
+    });
+
+    peer.on("connection", (connection) => {
+      console.log("[Net] Host received connection from guest");
+      conn = connection;
+      const capturedConn = conn;
+      setTimeout(() => setupConnection(capturedConn), 0);
+    });
+
+    peer.on("error", (err) => {
+      console.error("[Net] Host peer error:", err.type, err.message);
+      const msg =
+        err.type === "unavailable-id"
+          ? "Room code already in use. Try again."
+          : err.message || "Connection error";
+      if (callbacks.onError) callbacks.onError(msg);
+    });
+
+    attachPeerLifecycleHandlers(peer);
+  }
+
+  // ---- Set last room code (for deferred room creation) ----
+  function setLastRoomCode(code) {
+    lastRoomCode = code;
   }
 
   // ---- Host: create a room and wait for guest ----
@@ -142,7 +171,7 @@ const Network = (() => {
       const peerId = NETWORK_CONFIG.PEER_PREFIX + lastRoomCode;
       console.log("[Net] Connecting to host:", peerId);
       conn = peer.connect(peerId, {
-        reliable: true,
+        reliable: false,
         serialization: "json",
       });
       // Capture conn now; the module-level `conn` may be replaced before the timeout fires
@@ -163,41 +192,61 @@ const Network = (() => {
   }
 
   // ---- Host: restore a room with the same room code (after backgrounding) ----
+  // Reuses the existing Peer when possible to avoid unavailable-id errors
+  // from the PeerJS server (which holds stale IDs for ~60 s).
   function restoreHost(roomCode, cbs) {
     clearPollTimer();
-    // Close old conn first so its stale 'close' event doesn't trigger new callbacks
+    // Close old DataConnection so its stale events don't trigger new callbacks
     if (conn) {
       conn.close();
       conn = null;
     }
-    intentionalDestroy = true;
-    if (peer && !peer.destroyed) {
-      peer.destroy();
-    }
-    intentionalDestroy = false;
     connected = false;
     isHost = true;
     callbacks = cbs;
     lastRoomCode = roomCode;
     const peerId = NETWORK_CONFIG.PEER_PREFIX + roomCode;
 
-    console.log("[Net] Restoring host peer:", peerId);
+    // --- Reuse existing peer if it's alive with the correct ID ---
+    if (peer && !peer.destroyed && peer.id === peerId) {
+      console.log("[Net] Reusing host peer:", peerId, "open:", peer.open, "disconnected:", peer.disconnected);
+      if (peer.disconnected) {
+        // Signaling WS dropped — reconnect it; the existing 'open' +
+        // 'connection' handlers from the original creation still work
+        // because they reference the module-level `callbacks`.
+        peer.reconnect();
+      } else if (peer.open) {
+        // Peer is fully alive, ready to accept guest connections
+        if (callbacks.onReady) callbacks.onReady(roomCode);
+      }
+      // else: peer is still initializing from a previous attempt;
+      // its 'open' handler will fire onReady when it connects.
+      return;
+    }
+
+    // --- Must create a new peer (wrong ID or destroyed) ---
+    if (peer && !peer.destroyed) {
+      intentionallyDestroyedPeers.add(peer);
+      peer.destroy();
+    }
+
+    console.log("[Net] Creating host peer:", peerId);
     peer = new Peer(peerId, PEER_CONFIG);
 
     peer.on("open", (id) => {
-      console.log("[Net] Host peer restored, id:", id);
-      if (callbacks.onReady) callbacks.onReady(roomCode);
+      console.log("[Net] Host peer open, id:", id);
+      if (callbacks.onReady) callbacks.onReady(lastRoomCode);
     });
 
     peer.on("connection", (connection) => {
-      console.log("[Net] Restored host received guest connection");
+      console.log("[Net] Host received guest connection");
       conn = connection;
       const capturedConn = conn;
       setTimeout(() => setupConnection(capturedConn), 0);
     });
 
     peer.on("error", (err) => {
-      console.error("[Net] Restored host peer error:", err.type, err.message);
+      console.error("[Net] Host peer error:", err.type, err.message);
       const msg =
         err.type === "unavailable-id"
           ? "Room code already in use. Try again."
@@ -209,36 +258,55 @@ const Network = (() => {
   }
 
   // ---- Guest: restore connection to a host (after backgrounding) ----
+  // Reuses the existing Peer when possible so we don't create a new
+  // signaling WebSocket (and random UUID) on every retry attempt.
   function restoreGuest(roomCode, cbs) {
     clearPollTimer();
-    // Close old conn first so its stale 'close' event doesn't trigger new callbacks
+    // Close old DataConnection so its stale events don't trigger new callbacks
     if (conn) {
       conn.close();
       conn = null;
     }
-    intentionalDestroy = true;
-    if (peer && !peer.destroyed) {
-      peer.destroy();
-    }
-    intentionalDestroy = false;
     connected = false;
     isHost = false;
     callbacks = cbs;
     lastRoomCode = roomCode;
+    const hostPeerId = NETWORK_CONFIG.PEER_PREFIX + roomCode;
 
-    console.log("[Net] Restoring guest peer...");
+    // --- Reuse existing peer if it's alive ---
+    if (peer && !peer.destroyed) {
+      console.log("[Net] Reusing guest peer:", peer.id, "open:", peer.open, "disconnected:", peer.disconnected);
+      if (peer.open) {
+        // Peer is alive — connect to host directly
+        console.log("[Net] Guest connecting to host:", hostPeerId);
+        conn = peer.connect(hostPeerId, { reliable: false, serialization: "json" });
+        const capturedConn = conn;
+        setTimeout(() => setupConnection(capturedConn), 0);
+      } else if (peer.disconnected) {
+        // Signaling WS dropped — reconnect it; the existing 'open' handler
+        // from the original joinGame/restoreGuest creation will fire and
+        // call peer.connect() using `lastRoomCode` (module-level).
+        peer.reconnect();
+      }
+      // else: peer still initializing from a previous attempt;
+      // its 'open' handler will connect when ready.
+      return;
+    }
+
+    // --- Must create a new peer (destroyed or null) ---
+    console.log("[Net] Creating guest peer...");
     peer = new Peer(PEER_CONFIG);
 
     peer.on("open", (id) => {
-      const peerId = NETWORK_CONFIG.PEER_PREFIX + roomCode;
-      console.log("[Net] Guest peer restored, connecting to:", peerId);
-      conn = peer.connect(peerId, { reliable: true, serialization: "json" });
+      console.log("[Net] Guest peer open, id:", id, "connecting to:", hostPeerId);
+      const targetId = NETWORK_CONFIG.PEER_PREFIX + lastRoomCode;
+      conn = peer.connect(targetId, { reliable: false, serialization: "json" });
       const capturedConn = conn;
       setTimeout(() => setupConnection(capturedConn), 0);
     });
 
     peer.on("error", (err) => {
-      console.error("[Net] Restored guest peer error:", err.type, err.message);
+      console.error("[Net] Guest peer error:", err.type, err.message);
       const msg =
         err.type === "peer-unavailable"
           ? "Room not found. Host may have left."
@@ -445,12 +513,11 @@ const Network = (() => {
       conn.close();
       conn = null;
     }
-    intentionalDestroy = true;
     if (peer) {
+      intentionallyDestroyedPeers.add(peer);
       peer.destroy();
       peer = null;
     }
-    intentionalDestroy = false;
     callbacks = {};
   }
 
@@ -468,6 +535,7 @@ const Network = (() => {
 
   return {
     createHost,
+    createHostWithCode,
     joinGame,
     restoreHost,
     restoreGuest,
@@ -476,5 +544,7 @@ const Network = (() => {
     getIsHost,
     isConnected,
     getLastRoomCode,
+    setLastRoomCode,
+    generateRoomCode,
   };
 })();
