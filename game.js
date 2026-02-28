@@ -69,6 +69,8 @@ const Game = (() => {
   const CORRECTION_INTERVAL_MS = 100; // 10 Hz authority corrections
   // Holds saved game state to restore after host page reload
   let pendingResumeState = null;
+  // Host-authoritative P2 state received at 60 Hz (guest renders this directly)
+  let hostP2State = null;
 
   // ---- Get spawn position from active maze ----
   // Deterministic corner-based spawns that rotate each maze.
@@ -506,6 +508,7 @@ const Game = (() => {
       gameState = STATE.GAME_OVER;
       winner = killer.id;
       Sound.play("victory", killer.x, killer.y);
+      clearSession(); // don't persist a finished game
     }
   }
 
@@ -601,6 +604,7 @@ const Game = (() => {
     }
     gameState = STATE.GAME_OVER;
     Sound.play("gameOver", CONFIG.CANVAS.WIDTH / 2, CONFIG.CANVAS.HEIGHT / 2);
+    clearSession(); // don't persist a finished game
   }
 
   function switchMaze(mazeKey) {
@@ -716,7 +720,9 @@ const Game = (() => {
     });
   }
 
-  // Host sends its input to guest every frame (so guest can simulate P1 locally)
+  // Host sends its input + authoritative P2 state to guest every frame.
+  // Host keys → guest simulates P1 locally.  P2 state → guest renders directly
+  // (no client-side prediction, eliminates jitter).
   function sendHostInput() {
     Network.send({
       type: "host_input",
@@ -727,14 +733,16 @@ const Game = (() => {
         right: isAnyKeyDown(GAME_CONFIG.INPUT.MOVE_RIGHT),
         shoot: isAnyKeyDown(GAME_CONFIG.INPUT.SHOOT),
       },
+      p2: { x: p2.x, y: p2.y, dir: p2.dir },
     });
   }
 
   // Host sends lightweight authority corrections at 10 Hz
   function sendCorrections() {
     // Persist state at 10 Hz so a host page reload can resume mid-match
+    // (but not if game is over — session was already cleared)
     const code = Network.getLastRoomCode();
-    if (code) {
+    if (code && gameState !== STATE.GAME_OVER) {
       saveSession("host", code, {
         mazeOrder,
         selectedMazeKey,
@@ -903,12 +911,13 @@ const Game = (() => {
     }
   }
 
-  // Guest applies lightweight host corrections (10 Hz) — position targets are
-  // stored and smoothly converged toward each physics tick.  Authority state
-  // (health, score, alive, game state) is snapped immediately.
+  // Guest applies lightweight host corrections (10 Hz).
+  // P1 position: smoothly converged via per-tick lerp (guest simulates P1 locally).
+  // P2 position: NOT corrected here — guest receives P2 at 60 Hz via host_input.
+  // Authority state (health, score, alive, game state) is snapped immediately.
   const SNAP_DISTANCE_SQ = 900; // 30px — above this, snap instead of lerp
-  const CORRECTION_RATE = 0.15; // per-tick exponential lerp toward host pos
-  let correctionTarget = { p1: null, p2: null };
+  const CORRECTION_RATE = 0.15; // per-tick exponential lerp (P1 only)
+  let correctionTarget = { p1: null };
 
   function applyCorrections(data) {
     // Detect maze change (host rotated to a new maze)
@@ -925,16 +934,20 @@ const Game = (() => {
       mazeRotationStart = data.mazeRotationStart;
     }
 
-    // Store position targets for smooth per-tick convergence
+    // P1 position: store target for smooth per-tick convergence.
+    // P2 position: skipped — guest receives it at 60 Hz via host_input.
     correctionTarget.p1 = { x: data.p1.x, y: data.p1.y };
-    correctionTarget.p2 = { x: data.p2.x, y: data.p2.y };
 
-    // Direction + authority state — snap immediately
+    // P1: snap direction (host is authoritative for P1)
+    p1.dir = data.p1.dir;
+    // P2: do NOT snap direction — guest controls P2 locally, and snapping
+    // the host's RTT-delayed direction causes a 1-frame rotation flicker.
+
+    // Authority state — snap immediately for both players
     [
       { local: p1, remote: data.p1 },
       { local: p2, remote: data.p2 },
     ].forEach(({ local, remote }) => {
-      local.dir = remote.dir;
       local.health = remote.health;
       local.alive = remote.alive;
       local.score = remote.score;
@@ -957,28 +970,24 @@ const Game = (() => {
     if (data.isDraw !== undefined) isDraw = data.isDraw;
   }
 
-  // Smooth per-tick correction: converge toward host positions each physics frame
+  // Smooth per-tick correction: converge P1 toward host position each physics frame.
+  // P2 is not corrected here — it's set directly from host_input at 60 Hz.
   function applyCorrectionSmoothing() {
-    [
-      { local: p1, target: correctionTarget.p1, key: "p1" },
-      { local: p2, target: correctionTarget.p2, key: "p2" },
-    ].forEach(({ local, target, key }) => {
-      if (!target) return;
-      const dx = target.x - local.x;
-      const dy = target.y - local.y;
-      const distSq = dx * dx + dy * dy;
-      if (distSq > SNAP_DISTANCE_SQ) {
-        // Large divergence (teleport/respawn) — snap
-        local.x = target.x;
-        local.y = target.y;
-        correctionTarget[key] = null;
-      } else if (distSq > 0.25) {
-        local.x += dx * CORRECTION_RATE;
-        local.y += dy * CORRECTION_RATE;
-      } else {
-        correctionTarget[key] = null; // close enough
-      }
-    });
+    const t1 = correctionTarget.p1;
+    if (!t1) return;
+    const dx = t1.x - p1.x;
+    const dy = t1.y - p1.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq > SNAP_DISTANCE_SQ) {
+      p1.x = t1.x;
+      p1.y = t1.y;
+      correctionTarget.p1 = null;
+    } else if (distSq > 0.25) {
+      p1.x += dx * CORRECTION_RATE;
+      p1.y += dy * CORRECTION_RATE;
+    } else {
+      correctionTarget.p1 = null;
+    }
   }
 
   // ---- Render Interpolation Helpers ----
@@ -1083,9 +1092,10 @@ const Game = (() => {
         remoteInput = data.keys;
       }
     } else if (gameMode === "online-guest") {
-      // Guest receives host's input for local P1 simulation
+      // Guest receives host's input for local P1 simulation + authoritative P2 state
       if (data.type === "host_input") {
         remoteInput = data.keys;
+        if (data.p2) hostP2State = data.p2;
       }
       // Guest receives authority corrections from host (10 Hz)
       if (data.type === "correction") {
@@ -1287,13 +1297,12 @@ const Game = (() => {
       document.execCommand("copy");
       temp.remove();
     }
-    // Swap: hide copy button, reveal start-waiting button
+    // Brief "Copied!" feedback on the button
     const copyBtn = document.getElementById("copyLinkBtn");
-    if (copyBtn) copyBtn.style.display = "none";
-    const startBtn = document.getElementById("startWaitingBtn");
-    if (startBtn) {
-      startBtn.style.display = "";
-      startBtn.textContent = "▶ START WAITING FOR OPPONENT";
+    if (copyBtn) {
+      const original = copyBtn.textContent;
+      copyBtn.textContent = "✓ Copied!";
+      setTimeout(() => { copyBtn.textContent = original; }, 1500);
     }
   }
 
@@ -1381,8 +1390,6 @@ const Game = (() => {
             document.getElementById("connectionStatus").textContent =
               "Failed to create room. Please try again.";
             document.getElementById("connectionStatus").className = "status-error";
-            document.getElementById("startWaitingBtn").style.display = "";
-            document.getElementById("startWaitingBtn").textContent = "🔄 RETRY";
             lobbyRetryCount = 0;
             return;
           }
@@ -1407,8 +1414,6 @@ const Game = (() => {
             document.getElementById("connectionStatus").textContent =
               "Failed to create room. Please try again.";
             document.getElementById("connectionStatus").className = "status-error";
-            document.getElementById("startWaitingBtn").style.display = "";
-            document.getElementById("startWaitingBtn").textContent = "🔄 RETRY";
             lobbyRetryCount = 0;
             return;
           }
@@ -1432,8 +1437,6 @@ const Game = (() => {
             document.getElementById("connectionStatus").textContent =
               "Failed to create room. Please try again.";
             document.getElementById("connectionStatus").className = "status-error";
-            document.getElementById("startWaitingBtn").style.display = "";
-            document.getElementById("startWaitingBtn").textContent = "🔄 RETRY";
             lobbyRetryCount = 0;
             return;
           }
@@ -1468,7 +1471,7 @@ const Game = (() => {
     if (mode === "host") {
       document.getElementById("hostUI").style.display = "block";
       document.getElementById("joinUI").style.display = "none";
-      // Phase 1: generate room code and show share link, but do NOT register with PeerJS yet
+      // Generate room code, show share link, and immediately start PeerJS
       const roomCode = Network.generateRoomCode();
       Network.setLastRoomCode(roomCode);
       document.getElementById("roomCode").textContent = roomCode;
@@ -1478,11 +1481,11 @@ const Game = (() => {
         shareLink.href = url;
         shareLink.textContent = url;
       }
-      // Show copy button, hide start-waiting button and status
-      const copyBtn = document.getElementById("copyLinkBtn");
-      if (copyBtn) copyBtn.style.display = "";
-      document.getElementById("startWaitingBtn").style.display = "none";
-      document.getElementById("connectionStatus").style.display = "none";
+      document.getElementById("connectionStatus").style.display = "";
+      document.getElementById("connectionStatus").textContent = "Creating room...";
+      document.getElementById("connectionStatus").className = "";
+      lobbyRetryCount = 0;
+      setupHostRoom(roomCode, true);
     } else {
       document.getElementById("hostUI").style.display = "none";
       document.getElementById("joinUI").style.display = "block";
@@ -1490,18 +1493,6 @@ const Game = (() => {
       document.getElementById("roomCodeInput").value = "";
       setTimeout(() => document.getElementById("roomCodeInput").focus(), 100);
     }
-  }
-
-  function startWaiting() {
-    lobbyRetryCount = 0;
-    // Hide the start button, show the status text
-    document.getElementById("startWaitingBtn").style.display = "none";
-    document.getElementById("connectionStatus").style.display = "";
-    document.getElementById("connectionStatus").textContent = "Creating room...";
-    document.getElementById("connectionStatus").className = "";
-    // Now actually register with PeerJS using the pre-generated room code
-    const roomCode = Network.getLastRoomCode();
-    setupHostRoom(roomCode, true); // freshCreate = true → uses createHostWithCode
   }
 
   function joinOnlineGame() {
@@ -1542,11 +1533,7 @@ const Game = (() => {
     document.getElementById("hostUI").style.display = "none";
     document.getElementById("joinUI").style.display = "none";
     document.getElementById("lobby").style.display = "block";
-    // Reset deferred room creation state
     lobbyRetryCount = 0;
-    const copyBtn = document.getElementById("copyLinkBtn");
-    if (copyBtn) copyBtn.style.display = "";
-    document.getElementById("startWaitingBtn").style.display = "none";
     document.getElementById("connectionStatus").style.display = "none";
   }
 
@@ -1585,24 +1572,26 @@ const Game = (() => {
           updateCountdown();
         }
         if (gameState === STATE.PLAYING) {
-          // P1 = remote (host's input), P2 = local (guest's WASD)
+          // P1 = remote (host's input) — simulate locally for smooth rendering
           processRemoteInput(p1);
-          processPlayerInput(
-            p2,
-            GAME_CONFIG.INPUT.MOVE_UP,
-            GAME_CONFIG.INPUT.MOVE_DOWN,
-            GAME_CONFIG.INPUT.MOVE_LEFT,
-            GAME_CONFIG.INPUT.MOVE_RIGHT,
-            GAME_CONFIG.INPUT.SHOOT,
-          );
+          applyCorrectionSmoothing(); // lerp P1 toward host authority
+
+          // P2 = host-authoritative position (no local prediction).
+          // Guest only handles shooting locally for responsive bullet creation.
+          if (hostP2State) {
+            p2.x = hostP2State.x;
+            p2.y = hostP2State.y;
+            p2.dir = hostP2State.dir;
+          }
+          if (p2.alive && p2.freezeTimer <= 0 && isAnyKeyDown(GAME_CONFIG.INPUT.SHOOT)) {
+            tryShoot(p2);
+          }
 
           updateBullets();
           // Bomb/zombie: tick existing ones but DON'T spawn new ones (host is authoritative)
           updateBombs(PHYSICS_STEP_MS, true);
           updateZombies(PHYSICS_STEP_MS, true);
           updateRespawns(PHYSICS_STEP_MS);
-          // Smooth per-frame correction convergence toward host positions
-          applyCorrectionSmoothing();
           // NO checkMazeRotation — host sends maze changes via corrections
         }
       }
@@ -1753,6 +1742,16 @@ const Game = (() => {
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("resize", resizeCanvas);
+
+    // Tap-to-restart on canvas (mobile — no "R" key)
+    canvas.addEventListener("click", () => {
+      if (
+        gameState === STATE.GAME_OVER &&
+        (gameMode === "online-host" || gameMode === "local")
+      ) {
+        restartGame();
+      }
+    });
 
     // Mobile touch controls
     initTouchControls();
@@ -2056,9 +2055,12 @@ const Game = (() => {
     if (!s) return false;
     console.log("[Game] Resuming saved session:", s.role, s.roomCode);
     if (s.role === "host") {
-      // Show host UI, skip copy-link flow, go straight to waiting
-      showOnlineUI("host");
-      // Override with saved code
+      // Manually show host UI with saved room code — do NOT call showOnlineUI
+      // because it now auto-generates a new code and immediately starts PeerJS.
+      document.getElementById("lobby").style.display = "none";
+      document.getElementById("connectionUI").style.display = "block";
+      document.getElementById("hostUI").style.display = "block";
+      document.getElementById("joinUI").style.display = "none";
       Network.setLastRoomCode(s.roomCode);
       document.getElementById("roomCode").textContent = s.roomCode;
       const shareLink = document.getElementById("shareLink");
@@ -2067,15 +2069,12 @@ const Game = (() => {
         shareLink.href = url;
         shareLink.textContent = url;
       }
-      // Skip copy button, go straight to "Creating room..."
-      const copyBtn = document.getElementById("copyLinkBtn");
-      if (copyBtn) copyBtn.style.display = "none";
-      document.getElementById("startWaitingBtn").style.display = "none";
       document.getElementById("connectionStatus").style.display = "";
       document.getElementById("connectionStatus").textContent = "Rejoining room...";
       document.getElementById("connectionStatus").className = "";
       // Stash full game state so startOnlineGame can resume mid-match
       pendingResumeState = s;
+      lobbyRetryCount = 0;
       setupHostRoom(s.roomCode, true);
     } else {
       // Guest: auto-join the room
@@ -2113,7 +2112,6 @@ const Game = (() => {
     cancelOnline,
     copyShareLink,
     returnToLobby,
-    startWaiting,
     rejoinSession,
     getState: () => ({ p1, p2, bullets, gameState, winner, gameMode }),
   };

@@ -171,7 +171,7 @@ const Network = (() => {
       const peerId = NETWORK_CONFIG.PEER_PREFIX + lastRoomCode;
       console.log("[Net] Connecting to host:", peerId);
       conn = peer.connect(peerId, {
-        reliable: false,
+        reliable: true,
         serialization: "json",
       });
       // Capture conn now; the module-level `conn` may be replaced before the timeout fires
@@ -279,7 +279,7 @@ const Network = (() => {
       if (peer.open) {
         // Peer is alive — connect to host directly
         console.log("[Net] Guest connecting to host:", hostPeerId);
-        conn = peer.connect(hostPeerId, { reliable: false, serialization: "json" });
+        conn = peer.connect(hostPeerId, { reliable: true, serialization: "json" });
         const capturedConn = conn;
         setTimeout(() => setupConnection(capturedConn), 0);
       } else if (peer.disconnected) {
@@ -300,7 +300,7 @@ const Network = (() => {
     peer.on("open", (id) => {
       console.log("[Net] Guest peer open, id:", id, "connecting to:", hostPeerId);
       const targetId = NETWORK_CONFIG.PEER_PREFIX + lastRoomCode;
-      conn = peer.connect(targetId, { reliable: false, serialization: "json" });
+      conn = peer.connect(targetId, { reliable: true, serialization: "json" });
       const capturedConn = conn;
       setTimeout(() => setupConnection(capturedConn), 0);
     });
