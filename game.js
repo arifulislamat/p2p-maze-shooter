@@ -129,6 +129,10 @@ const Game = (() => {
       lastShot: 0,
       respawnTimer: 0,
       freezeTimer: 0,
+      damageFlashTimer: 0,
+      speedBoostTimer: 0,
+      weaponType: 'normal',   // 'normal' | 'rapidfire' | 'scatter'
+      weaponTimer: 0,
     };
   }
 
@@ -140,10 +144,30 @@ const Game = (() => {
   let bombs = [];
   let explosions = [];
   let lastBombSpawn = 0;
+  let nextBombSpawnDelay = 0; // randomized after each spawn
 
   // ---- Dynamic Zombies ----
   let zombies = [];
   let lastZombieSpawn = 0;
+
+  // ---- Health Packs ----
+  let healthPacks = [];
+  let lastHealthPackSpawn = 0;
+
+  // ---- Floating Texts (kill-feed / damage numbers) ----
+  let floatingTexts = [];
+
+  // ---- Speed Boost Pickups ----
+  let speedBoostPickups = [];
+  let lastSpeedBoostSpawn = 0;
+
+  // ---- Weapon Pickups ----
+  let weaponPickups = [];
+  let lastWeaponSpawn = 0;
+
+  // ---- Screen Shake (triggered by maze urgency ticks) ----
+  let screenShakeDuration = 0;
+  let lastUrgencySecond = -1;
 
   function getRandomPathCell() {
     const cells = activeMaze.pathCells;
@@ -172,11 +196,30 @@ const Game = (() => {
     return { x: cell.c * CELL_W + CELL_W / 2, y: cell.r * CELL_H + CELL_H / 2 };
   }
 
+  // Returns a spawn position that is also not too close to any item in avoidItems[]
+  // avoidItems is an array of objects with {x, y}. minDist defaults to 3 cells.
+  function getSpawnPosAvoiding(avoidItems = [], minDist = CELL_W * 3) {
+    const cells = activeMaze.pathCells;
+    if (!cells || cells.length === 0) return null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const cell = cells[Math.floor(Math.random() * cells.length)];
+      const cx = cell.c * CELL_W + CELL_W / 2;
+      const cy = cell.r * CELL_H + CELL_H / 2;
+      const d1 = Math.hypot(cx - (p1.x + PLAYER_SIZE / 2), cy - (p1.y + PLAYER_SIZE / 2));
+      const d2 = Math.hypot(cx - (p2.x + PLAYER_SIZE / 2), cy - (p2.y + PLAYER_SIZE / 2));
+      if (d1 <= CELL_W * 2 || d2 <= CELL_W * 2) continue;
+      const tooClose = avoidItems.some(item => Math.hypot(cx - item.x, cy - item.y) < minDist);
+      if (!tooClose) return { x: cx, y: cy };
+    }
+    return getRandomPathCell(); // fallback — at least avoid players
+  }
+
   function spawnBomb() {
     // Dynamic cap: ramps from 1 → BOMB_MAX over the maze rotation period
     const elapsed = Date.now() - mazeRotationStart;
     const progress = Math.min(1, elapsed / MAZE_ROTATION_MS); // 0→1
-    const currentMax = Math.floor(1 + (BOMB_MAX - 1) * progress);
+    // Ramp from BOMB_INITIAL_COUNT → BOMB_MAX over the maze rotation period
+    const currentMax = Math.floor(BOMB_INITIAL_COUNT + (BOMB_MAX - BOMB_INITIAL_COUNT) * progress);
     if (bombs.length >= currentMax) return;
     const pos = getRandomPathCell();
     if (!pos) return;
@@ -191,10 +234,18 @@ const Game = (() => {
   function updateBombs(dt, skipSpawn) {
     const now = Date.now();
 
-    // Spawn new bombs periodically (host only)
-    if (!skipSpawn && now - lastBombSpawn >= BOMB_SPAWN_INTERVAL) {
-      spawnBomb();
+    // Spawn one bomb after a random delay, up to the dynamic cap
+    if (!skipSpawn && now - lastBombSpawn >= nextBombSpawnDelay) {
+      const elapsed = now - mazeRotationStart;
+      const progress = Math.min(1, elapsed / MAZE_ROTATION_MS);
+      const currentMax = Math.floor(BOMB_INITIAL_COUNT + (BOMB_MAX - BOMB_INITIAL_COUNT) * progress);
+      if (bombs.length < currentMax) {
+        const all = [...bombs, ...healthPacks, ...speedBoostPickups, ...weaponPickups];
+        const pos = getSpawnPosAvoiding(all);
+        if (pos) bombs.push({ x: pos.x, y: pos.y, fuseLeft: BOMB_FUSE_TIME, spawnTime: now });
+      }
       lastBombSpawn = now;
+      nextBombSpawnDelay = 800 + Math.random() * 1700; // next bomb in 0.8–2.5 s
     }
 
     // Count down fuse and explode
@@ -228,6 +279,8 @@ const Game = (() => {
       const dist = Math.hypot(bomb.x - pcx, bomb.y - pcy);
       if (dist <= BOMB_BLAST_RADIUS) {
         player.health -= BOMB_BLAST_DAMAGE;
+        player.damageFlashTimer = DAMAGE_FLASH_MS;
+        addFloatingText(`-${BOMB_BLAST_DAMAGE}`, pcx, player.y - 8, "#ffaa00");
         if (player.health <= 0) {
           // Bomb kill — award the other player
           const killer = player.id === 1 ? p2 : p1;
@@ -265,8 +318,30 @@ const Game = (() => {
         continue;
       }
 
-      // Check collision with players
+      // Move zombie toward nearest player (greedy chase)
       const z = zombies[i];
+      const alivePlayers = [p1, p2].filter((p) => p.alive);
+      if (alivePlayers.length > 0) {
+        const nearest = alivePlayers.reduce((a, b) => {
+          const da = Math.hypot(a.x + PLAYER_SIZE / 2 - z.x, a.y + PLAYER_SIZE / 2 - z.y);
+          const db = Math.hypot(b.x + PLAYER_SIZE / 2 - z.x, b.y + PLAYER_SIZE / 2 - z.y);
+          return da < db ? a : b;
+        });
+        const pcx = nearest.x + PLAYER_SIZE / 2;
+        const pcy = nearest.y + PLAYER_SIZE / 2;
+        const dx = pcx - z.x;
+        const dy = pcy - z.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 1) {
+          const half = PLAYER_SIZE / 2;
+          const txX = z.x + (dx / dist) * ZOMBIE_SPEED;
+          const txY = z.y + (dy / dist) * ZOMBIE_SPEED;
+          if (Physics.canMoveTo(txX - half, z.y - half)) z.x = txX;
+          if (Physics.canMoveTo(z.x - half, txY - half)) z.y = txY;
+        }
+      }
+
+      // Check collision with players
       [p1, p2].forEach((player) => {
         if (!player.alive || player.freezeTimer > 0) return;
         const pcx = player.x + PLAYER_SIZE / 2;
@@ -282,10 +357,14 @@ const Game = (() => {
       });
     }
 
-    // Count down freeze timers
+    // Count down freeze, damage flash, and power-up timers
     [p1, p2].forEach((player) => {
-      if (player.freezeTimer > 0) {
-        player.freezeTimer = Math.max(0, player.freezeTimer - dt);
+      if (player.freezeTimer > 0) player.freezeTimer = Math.max(0, player.freezeTimer - dt);
+      if (player.damageFlashTimer > 0) player.damageFlashTimer = Math.max(0, player.damageFlashTimer - dt);
+      if (player.speedBoostTimer > 0) player.speedBoostTimer = Math.max(0, player.speedBoostTimer - dt);
+      if (player.weaponTimer > 0) {
+        player.weaponTimer = Math.max(0, player.weaponTimer - dt);
+        if (player.weaponTimer <= 0) player.weaponType = 'normal';
       }
     });
   }
@@ -328,26 +407,19 @@ const Game = (() => {
     let newX = player.x;
     let newY = player.y;
     let moved = false;
+    let inputDX = 0, inputDY = 0;
 
-    if (isAnyKeyDown(up)) {
-      newY -= PLAYER_SPEED;
-      player.dir = { dx: 0, dy: -1 };
-      moved = true;
-    }
-    if (isAnyKeyDown(down)) {
-      newY += PLAYER_SPEED;
-      player.dir = { dx: 0, dy: 1 };
-      moved = true;
-    }
-    if (isAnyKeyDown(left)) {
-      newX -= PLAYER_SPEED;
-      player.dir = { dx: -1, dy: 0 };
-      moved = true;
-    }
-    if (isAnyKeyDown(right)) {
-      newX += PLAYER_SPEED;
-      player.dir = { dx: 1, dy: 0 };
-      moved = true;
+    if (isAnyKeyDown(up))    { inputDY -= 1; player.dir = { dx:  0, dy: -1 }; moved = true; }
+    if (isAnyKeyDown(down))  { inputDY += 1; player.dir = { dx:  0, dy:  1 }; moved = true; }
+    if (isAnyKeyDown(left))  { inputDX -= 1; player.dir = { dx: -1, dy:  0 }; moved = true; }
+    if (isAnyKeyDown(right)) { inputDX += 1; player.dir = { dx:  1, dy:  0 }; moved = true; }
+
+    // Normalize diagonal so diagonal speed equals PLAYER_SPEED (no sqrt(2) exploit)
+    if (moved) {
+      const len = Math.hypot(inputDX, inputDY) || 1;
+      const effectiveSpeed = player.speedBoostTimer > 0 ? PLAYER_SPEED * SPEED_BOOST_MULTIPLIER : PLAYER_SPEED;
+      newX = player.x + (inputDX / len) * effectiveSpeed;
+      newY = player.y + (inputDY / len) * effectiveSpeed;
     }
 
     // Try moving on each axis independently for smooth sliding along walls
@@ -380,26 +452,19 @@ const Game = (() => {
     let newX = player.x;
     let newY = player.y;
     let moved = false;
+    let inputDX = 0, inputDY = 0;
 
-    if (remoteInput.up) {
-      newY -= PLAYER_SPEED;
-      player.dir = { dx: 0, dy: -1 };
-      moved = true;
-    }
-    if (remoteInput.down) {
-      newY += PLAYER_SPEED;
-      player.dir = { dx: 0, dy: 1 };
-      moved = true;
-    }
-    if (remoteInput.left) {
-      newX -= PLAYER_SPEED;
-      player.dir = { dx: -1, dy: 0 };
-      moved = true;
-    }
-    if (remoteInput.right) {
-      newX += PLAYER_SPEED;
-      player.dir = { dx: 1, dy: 0 };
-      moved = true;
+    if (remoteInput.up)    { inputDY -= 1; player.dir = { dx:  0, dy: -1 }; moved = true; }
+    if (remoteInput.down)  { inputDY += 1; player.dir = { dx:  0, dy:  1 }; moved = true; }
+    if (remoteInput.left)  { inputDX -= 1; player.dir = { dx: -1, dy:  0 }; moved = true; }
+    if (remoteInput.right) { inputDX += 1; player.dir = { dx:  1, dy:  0 }; moved = true; }
+
+    // Normalize diagonal so diagonal speed equals PLAYER_SPEED (no sqrt(2) exploit)
+    if (moved) {
+      const len = Math.hypot(inputDX, inputDY) || 1;
+      const effectiveSpeed = player.speedBoostTimer > 0 ? PLAYER_SPEED * SPEED_BOOST_MULTIPLIER : PLAYER_SPEED;
+      newX = player.x + (inputDX / len) * effectiveSpeed;
+      newY = player.y + (inputDY / len) * effectiveSpeed;
     }
 
     if (moved) {
@@ -436,22 +501,147 @@ const Game = (() => {
   // ---- Shooting ----
   function tryShoot(player) {
     const now = Date.now();
-    if (now - player.lastShot < FIRE_RATE) return;
-
+    const currentFireRate = player.weaponType === 'rapidfire' ? RAPID_FIRE_RATE_MS : FIRE_RATE;
+    if (now - player.lastShot < currentFireRate) return;
     player.lastShot = now;
 
-    // Bullet spawns from center of player in their facing direction
     const cx = player.x + PLAYER_SIZE / 2;
     const cy = player.y + PLAYER_SIZE / 2;
 
-    bullets.push({
-      x: cx + player.dir.dx * (PLAYER_SIZE / 2 + BULLET_SIZE),
-      y: cy + player.dir.dy * (PLAYER_SIZE / 2 + BULLET_SIZE),
-      dx: player.dir.dx * BULLET_SPEED,
-      dy: player.dir.dy * BULLET_SPEED,
-      owner: player.id,
-    });
+    if (player.weaponType === 'scatter') {
+      // 3-bullet spread fanned around the facing direction
+      const baseAngle = Math.atan2(player.dir.dy, player.dir.dx);
+      const spreadRad = SCATTER_SPREAD_DEG * Math.PI / 180;
+      [-spreadRad, 0, spreadRad].forEach((offset) => {
+        const angle = baseAngle + offset;
+        const dx = Math.cos(angle);
+        const dy = Math.sin(angle);
+        bullets.push({
+          x: cx + dx * (PLAYER_SIZE / 2 + BULLET_SIZE),
+          y: cy + dy * (PLAYER_SIZE / 2 + BULLET_SIZE),
+          dx: dx * BULLET_SPEED,
+          dy: dy * BULLET_SPEED,
+          owner: player.id,
+        });
+      });
+    } else {
+      bullets.push({
+        x: cx + player.dir.dx * (PLAYER_SIZE / 2 + BULLET_SIZE),
+        y: cy + player.dir.dy * (PLAYER_SIZE / 2 + BULLET_SIZE),
+        dx: player.dir.dx * BULLET_SPEED,
+        dy: player.dir.dy * BULLET_SPEED,
+        owner: player.id,
+      });
+    }
     Sound.play("shoot", player.x, player.y);
+  }
+
+  // ---- Floating Text Notifications ----
+  function addFloatingText(text, x, y, color) {
+    floatingTexts.push({ text, x, y, color, startTime: Date.now() });
+  }
+
+  // ---- Health Packs ----
+  function spawnHealthPack() {
+    if (healthPacks.length >= HEALTH_PACK_MAX) return;
+    const all = [...bombs, ...speedBoostPickups, ...weaponPickups, ...healthPacks];
+    const pos = getSpawnPosAvoiding(all);
+    if (!pos) return;
+    healthPacks.push({ x: pos.x, y: pos.y });
+  }
+
+  function updateHealthPacks(dt, skipSpawn) {
+    const now = Date.now();
+    if (!skipSpawn && now - lastHealthPackSpawn >= HEALTH_PACK_SPAWN_INTERVAL) {
+      spawnHealthPack();
+      lastHealthPackSpawn = now;
+    }
+    // Check player pickup
+    for (let i = healthPacks.length - 1; i >= 0; i--) {
+      const hp = healthPacks[i];
+      let picked = false;
+      [p1, p2].forEach((player) => {
+        if (picked || !player.alive) return;
+        const pcx = player.x + PLAYER_SIZE / 2;
+        const pcy = player.y + PLAYER_SIZE / 2;
+        if (Math.hypot(hp.x - pcx, hp.y - pcy) <= PLAYER_SIZE * 1.2) {
+          player.health = Math.min(PLAYER_HEALTH, player.health + HEALTH_PACK_HEAL);
+          addFloatingText(`+${HEALTH_PACK_HEAL} HP`, pcx, player.y - 20, "#00ff88");
+          Sound.play("respawn", pcx, pcy);
+          healthPacks.splice(i, 1);
+          picked = true;
+        }
+      });
+    }
+  }
+
+  // ---- Speed Boost Pickups ----
+  function spawnSpeedBoostPickup() {
+    if (speedBoostPickups.length >= SPEED_BOOST_MAX) return;
+    const all = [...bombs, ...healthPacks, ...weaponPickups, ...speedBoostPickups];
+    const pos = getSpawnPosAvoiding(all);
+    if (!pos) return;
+    speedBoostPickups.push({ x: pos.x, y: pos.y });
+  }
+
+  function updateSpeedBoostPickups(dt, skipSpawn) {
+    const now = Date.now();
+    if (!skipSpawn && now - lastSpeedBoostSpawn >= SPEED_BOOST_SPAWN_INTERVAL) {
+      spawnSpeedBoostPickup();
+      lastSpeedBoostSpawn = now;
+    }
+    for (let i = speedBoostPickups.length - 1; i >= 0; i--) {
+      const sp = speedBoostPickups[i];
+      let picked = false;
+      [p1, p2].forEach((player) => {
+        if (picked || !player.alive) return;
+        const pcx = player.x + PLAYER_SIZE / 2;
+        const pcy = player.y + PLAYER_SIZE / 2;
+        if (Math.hypot(sp.x - pcx, sp.y - pcy) <= PLAYER_SIZE * 1.2) {
+          player.speedBoostTimer = SPEED_BOOST_DURATION_MS;
+          addFloatingText(`⚡ SPEED!`, pcx, player.y - 20, "#ffff00");
+          Sound.play("respawn", pcx, pcy);
+          speedBoostPickups.splice(i, 1);
+          picked = true;
+        }
+      });
+    }
+  }
+
+  // ---- Weapon Pickups (rapid fire / scatter shot) ----
+  function spawnWeaponPickup() {
+    if (weaponPickups.length >= WEAPON_MAX) return;
+    const all = [...bombs, ...healthPacks, ...speedBoostPickups, ...weaponPickups];
+    const pos = getSpawnPosAvoiding(all);
+    if (!pos) return;
+    const type = Math.random() < 0.5 ? 'rapidfire' : 'scatter';
+    weaponPickups.push({ x: pos.x, y: pos.y, type });
+  }
+
+  function updateWeaponPickups(dt, skipSpawn) {
+    const now = Date.now();
+    if (!skipSpawn && now - lastWeaponSpawn >= WEAPON_SPAWN_INTERVAL) {
+      spawnWeaponPickup();
+      lastWeaponSpawn = now;
+    }
+    for (let i = weaponPickups.length - 1; i >= 0; i--) {
+      const wp = weaponPickups[i];
+      let picked = false;
+      [p1, p2].forEach((player) => {
+        if (picked || !player.alive) return;
+        const pcx = player.x + PLAYER_SIZE / 2;
+        const pcy = player.y + PLAYER_SIZE / 2;
+        if (Math.hypot(wp.x - pcx, wp.y - pcy) <= PLAYER_SIZE * 1.2) {
+          player.weaponType = wp.type;
+          player.weaponTimer = wp.type === 'rapidfire' ? RAPID_FIRE_DURATION_MS : SCATTER_DURATION_MS;
+          const label = wp.type === 'rapidfire' ? '⚡ RAPID FIRE' : '💥 SCATTER';
+          addFloatingText(label, pcx, player.y - 20, wp.type === 'rapidfire' ? '#00aaff' : '#ff6600');
+          Sound.play("respawn", pcx, pcy);
+          weaponPickups.splice(i, 1);
+          picked = true;
+        }
+      });
+    }
   }
 
   // ---- Update Bullets ----
@@ -479,13 +669,31 @@ const Game = (() => {
         continue;
       }
 
+      // Check hit against zombies — bullet destroys zombie on contact
+      let hitZombie = false;
+      for (let zi = zombies.length - 1; zi >= 0; zi--) {
+        const z = zombies[zi];
+        if (Math.hypot(b.x - z.x, b.y - z.y) <= ZOMBIE_HITBOX_RADIUS + BULLET_SIZE) {
+          zombies.splice(zi, 1);
+          bullets.splice(i, 1);
+          Sound.play("hit", z.x, z.y);
+          addFloatingText("ZOMBIE!", z.x, z.y - 12, "#44ff44");
+          hitZombie = true;
+          break;
+        }
+      }
+      if (hitZombie) continue;
+
       // Check hit against players (can't hit own player)
       const target = b.owner === 1 ? p2 : p1;
       const shooter = b.owner === 1 ? p1 : p2;
       if (Physics.bulletHitsPlayer(b, target)) {
         target.health -= 1;
+        target.damageFlashTimer = DAMAGE_FLASH_MS;
         bullets.splice(i, 1);
         Sound.play("hit", target.x, target.y);
+        addFloatingText("-1", target.x + PLAYER_SIZE / 2, target.y - 8,
+          target.id === 1 ? "#00d4ff" : "#ff4444");
 
         // Check if killed
         if (target.health <= 0) {
@@ -503,6 +711,12 @@ const Game = (() => {
     deadPlayer.killedBy = killer; // remember killer for smart respawn
     killer.score += 1;
     Sound.play("death", deadPlayer.x, deadPlayer.y);
+    // Kill-feed notifications
+    addFloatingText("ELIMINATED!",
+      deadPlayer.x + PLAYER_SIZE / 2, deadPlayer.y - 24, "#ffffff");
+    addFloatingText("+1 KILL",
+      killer.x + PLAYER_SIZE / 2, killer.y - 24,
+      killer.id === 1 ? "#00d4ff" : "#ff4444");
 
     // Check win
     if (killer.score >= WIN_SCORE) {
@@ -555,6 +769,8 @@ const Game = (() => {
     player.health = PLAYER_HEALTH;
     player.alive = true;
     player.respawnTimer = 0;
+    player.freezeTimer = 0;
+    player.damageFlashTimer = 0;
     player.killedBy = null; // clear killer reference
     Sound.play("respawn", player.x, player.y);
   }
@@ -633,8 +849,17 @@ const Game = (() => {
     bombs = [];
     explosions = [];
     lastBombSpawn = Date.now();
+    nextBombSpawnDelay = 500 + Math.random() * 800; // first bomb in 0.5–1.3 s
     zombies = [];
     lastZombieSpawn = Date.now();
+    healthPacks = [];
+    lastHealthPackSpawn = Date.now();
+    speedBoostPickups = [];
+    lastSpeedBoostSpawn = Date.now();
+    weaponPickups = [];
+    lastWeaponSpawn = Date.now();
+    floatingTexts = [];
+    lastUrgencySecond = -1;
 
     // Update lobby selector highlight if visible
     highlightSelectedMaze();
@@ -687,9 +912,16 @@ const Game = (() => {
     bullets = [];
     bombs = [];
     explosions = [];
-    lastBombSpawn = Date.now();
     zombies = [];
     lastZombieSpawn = Date.now();
+    healthPacks = [];
+    lastHealthPackSpawn = Date.now();
+    speedBoostPickups = [];
+    lastSpeedBoostSpawn = Date.now();
+    weaponPickups = [];
+    lastWeaponSpawn = Date.now();
+    floatingTexts = [];
+    lastUrgencySecond = -1;
     winner = null;
     isDraw = false;
     mazeOrder = shuffleMazeOrder();
@@ -697,6 +929,8 @@ const Game = (() => {
     selectedMazeKey = mazeOrder[0];
     activeMaze = parseMaze(selectedMazeKey);
     Renderer.invalidateMazeCache();
+    lastBombSpawn = Date.now();
+    nextBombSpawnDelay = 500 + Math.random() * 800; // first bomb in 0.5–1.3 s
     mazeRotationStart = Date.now();
     matchStartTime = Date.now();
     lastResync = Date.now();
@@ -774,6 +1008,9 @@ const Game = (() => {
         score: p1.score,
         respawnTimer: p1.respawnTimer,
         freezeTimer: p1.freezeTimer,
+        speedBoostTimer: p1.speedBoostTimer,
+        weaponType: p1.weaponType,
+        weaponTimer: p1.weaponTimer,
       },
       p2: {
         x: p2.x,
@@ -784,8 +1021,14 @@ const Game = (() => {
         score: p2.score,
         respawnTimer: p2.respawnTimer,
         freezeTimer: p2.freezeTimer,
+        speedBoostTimer: p2.speedBoostTimer,
+        weaponType: p2.weaponType,
+        weaponTimer: p2.weaponTimer,
       },
       bombs: bombs.map((b) => ({ x: b.x, y: b.y, fuseLeft: b.fuseLeft })),
+      healthPacks: healthPacks.map((h) => ({ x: h.x, y: h.y })),
+      speedBoostPickups: speedBoostPickups.map((s) => ({ x: s.x, y: s.y })),
+      weaponPickups: weaponPickups.map((w) => ({ x: w.x, y: w.y, type: w.type })),
       explosions: explosions.map((e) => ({
         x: e.x,
         y: e.y,
@@ -824,6 +1067,9 @@ const Game = (() => {
         score: p1.score,
         respawnTimer: p1.respawnTimer,
         freezeTimer: p1.freezeTimer,
+        speedBoostTimer: p1.speedBoostTimer,
+        weaponType: p1.weaponType,
+        weaponTimer: p1.weaponTimer,
       },
       p2: {
         x: p2.x,
@@ -834,6 +1080,9 @@ const Game = (() => {
         score: p2.score,
         respawnTimer: p2.respawnTimer,
         freezeTimer: p2.freezeTimer,
+        speedBoostTimer: p2.speedBoostTimer,
+        weaponType: p2.weaponType,
+        weaponTimer: p2.weaponTimer,
       },
       bullets: bullets.map((b) => ({
         x: b.x,
@@ -843,6 +1092,9 @@ const Game = (() => {
         owner: b.owner,
       })),
       bombs: bombs.map((b) => ({ x: b.x, y: b.y, fuseLeft: b.fuseLeft })),
+      healthPacks: healthPacks.map((h) => ({ x: h.x, y: h.y })),
+      speedBoostPickups: speedBoostPickups.map((s) => ({ x: s.x, y: s.y })),
+      weaponPickups: weaponPickups.map((w) => ({ x: w.x, y: w.y, type: w.type })),
       explosions: explosions.map((e) => ({
         x: e.x,
         y: e.y,
@@ -895,6 +1147,9 @@ const Game = (() => {
 
     bullets = data.bullets;
     if (data.bombs) bombs = data.bombs;
+    if (data.healthPacks) healthPacks = data.healthPacks;
+    if (data.speedBoostPickups) speedBoostPickups = data.speedBoostPickups;
+    if (data.weaponPickups) weaponPickups = data.weaponPickups;
     // Convert elapsed times to local timestamps to avoid host/guest clock skew
     if (data.explosions) {
       const recvNow = Date.now();
@@ -913,6 +1168,13 @@ const Game = (() => {
     // Sync freeze timers from player state
     if (data.p1.freezeTimer !== undefined) p1.freezeTimer = data.p1.freezeTimer;
     if (data.p2.freezeTimer !== undefined) p2.freezeTimer = data.p2.freezeTimer;
+    // Sync power-up states from host
+    if (data.p1.speedBoostTimer !== undefined) p1.speedBoostTimer = data.p1.speedBoostTimer;
+    if (data.p1.weaponType !== undefined) p1.weaponType = data.p1.weaponType;
+    if (data.p1.weaponTimer !== undefined) p1.weaponTimer = data.p1.weaponTimer;
+    if (data.p2.speedBoostTimer !== undefined) p2.speedBoostTimer = data.p2.speedBoostTimer;
+    if (data.p2.weaponType !== undefined) p2.weaponType = data.p2.weaponType;
+    if (data.p2.weaponTimer !== undefined) p2.weaponTimer = data.p2.weaponTimer;
     gameState = data.gameState;
     winner = data.winner;
     countdownValue = data.countdownValue;
@@ -966,10 +1228,16 @@ const Game = (() => {
       local.score = remote.score;
       local.respawnTimer = remote.respawnTimer;
       if (remote.freezeTimer !== undefined) local.freezeTimer = remote.freezeTimer;
+      if (remote.speedBoostTimer !== undefined) local.speedBoostTimer = remote.speedBoostTimer;
+      if (remote.weaponType !== undefined) local.weaponType = remote.weaponType;
+      if (remote.weaponTimer !== undefined) local.weaponTimer = remote.weaponTimer;
     });
 
     // Host-only entities — guest doesn't spawn these, accept host data
     if (data.bombs) bombs = data.bombs;
+    if (data.healthPacks) healthPacks = data.healthPacks;
+    if (data.speedBoostPickups) speedBoostPickups = data.speedBoostPickups;
+    if (data.weaponPickups) weaponPickups = data.weaponPickups;
     // Convert elapsed times to local timestamps to avoid host/guest clock skew
     if (data.explosions) {
       const recvNow = Date.now();
@@ -987,9 +1255,19 @@ const Game = (() => {
     }
 
     // Game state authority
+    const prevState = gameState;
+    const prevCDValue = countdownValue;
     gameState = data.gameState;
     winner = data.winner;
     countdownValue = data.countdownValue;
+    // Play countdown beep on the guest when the integer ticks down
+    if (gameMode === "online-guest" && countdownValue !== prevCDValue) {
+      if (countdownValue > 0 && countdownValue <= COUNTDOWN_DURATION) {
+        Sound.play("countdown", CONFIG.CANVAS.WIDTH / 2, CONFIG.CANVAS.HEIGHT / 2);
+      } else if (countdownValue <= 0 && prevState === STATE.COUNTDOWN && gameState === STATE.PLAYING) {
+        Sound.play("go", CONFIG.CANVAS.WIDTH / 2, CONFIG.CANVAS.HEIGHT / 2);
+      }
+    }
     if (data.mazeTimeLeft !== undefined) displayMazeTimeLeft = data.mazeTimeLeft;
     if (data.matchTimeLeft !== undefined) displayMatchTimeLeft = data.matchTimeLeft;
     if (data.mazesPlayed !== undefined) mazesPlayed = data.mazesPlayed;
@@ -1065,6 +1343,12 @@ const Game = (() => {
         mazeOrder = data.mazeOrder;
       }
       startOnlineGame(false);
+      return;
+    }
+
+    // Guest asked host to restart (joystick spin gesture)
+    if (data.type === "restart_request" && gameMode === "online-host" && gameState === STATE.GAME_OVER) {
+      restartGame();
       return;
     }
 
@@ -1586,9 +1870,9 @@ const Game = (() => {
       // Guest physics: bullets/bombs/zombies at 60 Hz; positions from host.
       if (runPhysics) {
         sendLocalInput();
-        if (gameState === STATE.COUNTDOWN) {
-          updateCountdown();
-        }
+        // Guest does NOT run updateCountdown() locally — countdownValue and
+        // gameState come authoritatively from host corrections at 10 Hz.
+        // Running it locally caused the value to flicker between the two sources.
         if (gameState === STATE.PLAYING) {
           // P1: process host's key input for responsive bullet creation.
           // Position will be overridden below by authoritative host state.
@@ -1602,6 +1886,9 @@ const Game = (() => {
           updateBullets();
           updateBombs(PHYSICS_STEP_MS, true);
           updateZombies(PHYSICS_STEP_MS, true);
+          updateHealthPacks(PHYSICS_STEP_MS, true);
+          updateSpeedBoostPickups(PHYSICS_STEP_MS, true);
+          updateWeaponPickups(PHYSICS_STEP_MS, true);
           updateRespawns(PHYSICS_STEP_MS);
         }
       }
@@ -1640,6 +1927,9 @@ const Game = (() => {
         updateBullets();
         updateBombs(PHYSICS_STEP_MS);
         updateZombies(PHYSICS_STEP_MS);
+        updateHealthPacks(PHYSICS_STEP_MS);
+        updateSpeedBoostPickups(PHYSICS_STEP_MS);
+        updateWeaponPickups(PHYSICS_STEP_MS);
         updateRespawns(PHYSICS_STEP_MS);
         checkMazeRotation();
       }
@@ -1680,6 +1970,14 @@ const Game = (() => {
     const renderAlpha = physicsAccumulator / PHYSICS_STEP_MS;
     interpolateForRender(renderAlpha);
 
+    // --- Screen shake (triggered by urgency ticks each second) ---
+    if (screenShakeDuration > 0) screenShakeDuration = Math.max(0, screenShakeDuration - rawDt);
+    const shakeAmt = screenShakeDuration > 0 ? 3 * (screenShakeDuration / 180) : 0;
+    Renderer.beginFrame(
+      shakeAmt > 0 ? (Math.random() - 0.5) * 2 * shakeAmt : 0,
+      shakeAmt > 0 ? (Math.random() - 0.5) * 2 * shakeAmt : 0,
+    );
+
     Renderer.drawArena();
     Renderer.drawMaze();
     Renderer.drawPlayer(p1, "P1");
@@ -1688,6 +1986,21 @@ const Game = (() => {
     Renderer.drawBombs(bombs);
     Renderer.drawExplosions(explosions);
     Renderer.drawZombies(zombies);
+    Renderer.drawHealthPacks(healthPacks);
+    Renderer.drawSpeedBoostPickups(speedBoostPickups);
+    Renderer.drawWeaponPickups(weaponPickups);
+    Renderer.drawFloatingTexts(floatingTexts);
+    // Damage flash: only show for the local player being hit
+    // online-host = P1, online-guest = P2, local = both
+    if (gameMode === "online-host") {
+      Renderer.drawDamageFlash(p1, "0,180,255");
+    } else if (gameMode === "online-guest") {
+      Renderer.drawDamageFlash(p2, "255,60,60");
+    } else {
+      Renderer.drawDamageFlash(p1, "0,180,255");
+      Renderer.drawDamageFlash(p2, "255,60,60");
+    }
+    Renderer.drawLowHealthVignette(p1, p2);
 
     // Freeze effects
     if (p1.freezeTimer > 0) Renderer.drawFreezeEffect(p1);
@@ -1708,6 +2021,18 @@ const Game = (() => {
     }
     Renderer.drawHUD(p1, p2, mazeTimeLeft, matchTimeLeft, mazesPlayed);
 
+    // --- Maze urgency: tick sound + screen shake in last URGENT_MAZE_TIME_S seconds ---
+    if (gameState === STATE.PLAYING && mazeTimeLeft > 0 && mazeTimeLeft <= URGENT_MAZE_TIME_S) {
+      const urgentSecond = Math.ceil(mazeTimeLeft);
+      if (urgentSecond !== lastUrgencySecond) {
+        lastUrgencySecond = urgentSecond;
+        Sound.play("countdown", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        screenShakeDuration = Math.max(screenShakeDuration, 180);
+      }
+    } else if (mazeTimeLeft > URGENT_MAZE_TIME_S) {
+      lastUrgencySecond = -1; // reset so it fires again next maze
+    }
+
     // Respawn timers
     if (!p1.alive) Renderer.drawRespawnTimer(p1, p1.respawnTimer);
     if (!p2.alive) Renderer.drawRespawnTimer(p2, p2.respawnTimer);
@@ -1717,6 +2042,14 @@ const Game = (() => {
 
     // Restore physics positions after rendering so game state stays accurate
     restorePhysicsPositions();
+
+    // Clean up expired floating texts (once per frame is sufficient)
+    const floatNow = Date.now();
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      if (floatNow - floatingTexts[i].startTime > FLOATING_TEXT_DURATION_MS) {
+        floatingTexts.splice(i, 1);
+      }
+    }
 
     // Overlays (drawn AFTER restore — they don't use entity positions)
     if (gameState === STATE.COUNTDOWN) {
@@ -1748,6 +2081,7 @@ const Game = (() => {
       Renderer.drawDisconnected();
     }
 
+    Renderer.endFrame();
     requestAnimationFrame(gameLoop);
   }
 
@@ -1798,6 +2132,12 @@ const Game = (() => {
         ? touchControls.offsetHeight
         : 0;
 
+    const mobileGuide = document.getElementById("mobile-guide");
+    const mobileGuideHeight =
+      mobileGuide && mobileGuide.offsetParent !== null
+        ? mobileGuide.offsetHeight
+        : 0;
+
     const availableWidth = Math.max(
       1,
       window.innerWidth - GAME_CONFIG.VIEWPORT.SAFE_MARGIN * 2,
@@ -1807,6 +2147,7 @@ const Game = (() => {
       window.innerHeight -
         controlsHeight -
         touchControlsHeight -
+        mobileGuideHeight -
         GAME_CONFIG.VIEWPORT.SAFE_MARGIN * 2,
     );
 
@@ -1868,6 +2209,8 @@ const Game = (() => {
     let joystickTouchId = null;
     let baseCX = 0;
     let baseCY = 0;
+    const spinVisited = new Set();
+    let spinWindowStart = 0;
 
     function getBaseCenter() {
       const rect = joystickBase.getBoundingClientRect();
@@ -1893,6 +2236,24 @@ const Game = (() => {
       const nx = (dx / dist) * clampedDist;
       const ny = (dy / dist) * clampedDist;
       joystickKnob.style.transform = `translate(${nx}px, ${ny}px)`;
+
+      // --- Spin-to-restart detection (game over only) ---
+      // Track which of the 4 quadrants the knob passes through.
+      // Visiting all 4 within SPIN_WINDOW_MS triggers a restart.
+      const SPIN_WINDOW_MS = 2000;
+      const q = (dx >= 0 ? 1 : 0) | (dy >= 0 ? 2 : 0); // 0/1/2/3
+      if (!spinVisited.has(q)) {
+        if (spinVisited.size === 0) spinWindowStart = Date.now();
+        spinVisited.add(q);
+        if (spinVisited.size === 4) {
+          spinVisited.clear();
+          if (Date.now() - spinWindowStart <= SPIN_WINDOW_MS) {
+            handleJoystickSpin();
+          }
+        }
+      } else if (Date.now() - spinWindowStart > SPIN_WINDOW_MS) {
+        spinVisited.clear(); // window expired — reset
+      }
 
       // 8-directional mapping using 45° sectors
       // atan2: right=0, down=PI/2, left=±PI, up=-PI/2
@@ -1939,6 +2300,7 @@ const Game = (() => {
         const c = getBaseCenter();
         baseCX = c.cx;
         baseCY = c.cy;
+        spinVisited.clear(); // reset spin tracker on new touch
         applyJoystickVector(touch.clientX - baseCX, touch.clientY - baseCY);
       },
       { passive: false },
@@ -1979,6 +2341,16 @@ const Game = (() => {
   }
 
   // ---- Select maze from lobby ----
+  function handleJoystickSpin() {
+    if (gameState !== STATE.GAME_OVER) return;
+    if (gameMode === "online-guest") {
+      // Ask the host to restart
+      Network.send({ type: "restart_request" });
+    } else if (gameMode === "online-host" || gameMode === "local") {
+      restartGame();
+    }
+  }
+
   function selectMaze(mazeKey) {
     if (MAZES[mazeKey]) {
       selectedMazeKey = mazeKey;

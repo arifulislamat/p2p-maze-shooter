@@ -399,6 +399,7 @@ canvas {
 /* ---- Controls Help ---- */
 #controls-help {
   margin-top: 1rem;
+  padding-bottom: 0.95rem;
   font-size: 0.75rem;
   color: var(--text-dim);
   text-align: center;
@@ -451,10 +452,43 @@ canvas {
   display: none; /* hidden by default; shown by portrait media query */
 }
 
+/* Mobile guide strip — hidden by default, shown only in portrait media query */
+#mobile-guide {
+  display: none;
+}
+
 @media (orientation: portrait) and (max-width: 1024px) {
   /* Keyboard hints not relevant on touch devices */
   #controls-help {
     display: none !important;
+  }
+
+  /* Mobile guide strip */
+  #mobile-guide {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.5rem;
+    width: 100%;
+    padding: 4px 8px 3px;
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.02em;
+    background: transparent;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  #mobile-guide strong {
+    color: rgba(255, 255, 255, 0.8);
+    font-weight: 600;
+  }
+
+  .mg-sep {
+    color: rgba(255, 255, 255, 0.25);
+    font-size: 0.6rem;
   }
 
   /* ---- Lobby: maze selector becomes a horizontal scroll-snap carousel ---- */

@@ -28,6 +28,8 @@ const Renderer = (() => {
       SCANLINE_STEP: 3,
       SCANLINE_ALPHA: 0.04,
       MAZE_ANNOUNCE_MS: 2500,
+      DAMAGE_FLASH_ALPHA: 0.35,
+      LOW_HEALTH_PULSE_ALPHA: 0.28,
     },
     INDICATOR: {
       OFFSET: 16,
@@ -490,7 +492,7 @@ const Renderer = (() => {
     ctx.fillStyle = "#666666";
     ctx.font = RENDER_CONFIG.FONTS.GAME_OVER_SUB;
     ctx.fillText(
-      isGuest ? "Waiting for host to restart..." : "Tap or press R to restart",
+      isGuest ? "Spin joystick to request restart" : "Tap / press R to restart",
       centerX,
       centerY + 65,
     );
@@ -621,35 +623,29 @@ const Renderer = (() => {
       const pulseSpeed = 100 + 500 * fuseRatio; // fast near end, slow at start
       const pulse = 1 + 0.15 * Math.sin((now / pulseSpeed) * Math.PI * 2);
 
-      // Ground glow circle (danger zone indicator)
-      const dangerAlpha = 0.08 + 0.12 * (1 - fuseRatio);
-      const grd = ctx.createRadialGradient(
-        cx,
-        cy,
-        0,
-        cx,
-        cy,
-        BOMB_BLAST_RADIUS,
-      );
-      grd.addColorStop(0, `rgba(255, 100, 0, ${dangerAlpha})`);
-      grd.addColorStop(1, "rgba(255, 100, 0, 0)");
-      ctx.fillStyle = grd;
+      // Danger zone flat circle — subtle, half blast radius
+      const dangerAlpha = 0.04 + 0.06 * (1 - fuseRatio);
+      ctx.globalAlpha = dangerAlpha;
+      ctx.fillStyle = "#ff6400";
       ctx.beginPath();
-      ctx.arc(cx, cy, BOMB_BLAST_RADIUS, 0, Math.PI * 2);
+      ctx.arc(cx, cy, BOMB_BLAST_RADIUS * 0.55, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalAlpha = 1;
 
       // Bomb body — pulsing circle
       const bombSize = CELL_W * 0.35 * pulse;
       ctx.save();
 
-      // Glow color shifts from orange to red as fuse runs down
-      const r = Math.floor(255);
+      // Glow ring (cheap stroke instead of shadowBlur)
       const g = Math.floor(170 * fuseRatio);
-      const b = 0;
-      const glowColor = `rgb(${r}, ${g}, ${b})`;
-
-      ctx.shadowColor = glowColor;
-      ctx.shadowBlur = 12 * pulse;
+      const glowColor = `rgb(255,${g},0)`;
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.7 + 0.3 * (1 - fuseRatio);
+      ctx.beginPath();
+      ctx.arc(cx, cy, bombSize + 3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
 
       // Bomb body
       ctx.fillStyle = "#333";
@@ -659,24 +655,20 @@ const Renderer = (() => {
 
       // Bomb highlight
       ctx.fillStyle = glowColor;
-      ctx.globalAlpha = 0.5 + 0.3 * (1 - fuseRatio);
+      ctx.globalAlpha = 0.45 + 0.3 * (1 - fuseRatio);
       ctx.beginPath();
       ctx.arc(cx, cy, bombSize * 0.7, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.shadowBlur = 0;
 
-      // Fuse spark on top
+      // Fuse spark on top (no shadowBlur)
       const sparkAngle = (now / 100) % (Math.PI * 2);
       const sparkX = cx + Math.cos(sparkAngle) * bombSize * 0.3;
       const sparkY = cy - bombSize * 0.8;
-      ctx.fillStyle = "#fff";
-      ctx.shadowColor = "#ffff00";
-      ctx.shadowBlur = 8;
+      ctx.fillStyle = "#ffff88";
       ctx.beginPath();
-      ctx.arc(sparkX, sparkY, 2 + Math.random() * 1.5, 0, Math.PI * 2);
+      ctx.arc(sparkX, sparkY, 3, 0, Math.PI * 2);
       ctx.fill();
-      ctx.shadowBlur = 0;
 
       // Bomb emoji on top of body
       ctx.font = `${Math.floor(bombSize * 1.4)}px serif`;
@@ -713,22 +705,18 @@ const Renderer = (() => {
       ctx.arc(exp.x, exp.y, radius, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Inner fireball glow
-      const fireball = ctx.createRadialGradient(
-        exp.x,
-        exp.y,
-        0,
-        exp.x,
-        exp.y,
-        radius * 0.8,
-      );
-      fireball.addColorStop(0, `rgba(255, 255, 200, ${alpha * 0.6})`);
-      fireball.addColorStop(0.3, `rgba(255, 120, 0, ${alpha * 0.4})`);
-      fireball.addColorStop(1, `rgba(255, 50, 0, 0)`);
-      ctx.fillStyle = fireball;
+      // Inner fireball (two flat circles — no gradient)
+      ctx.globalAlpha = alpha * 0.45;
+      ctx.fillStyle = "#ff7700";
       ctx.beginPath();
       ctx.arc(exp.x, exp.y, radius * 0.8, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.fillStyle = "#ffffc8";
+      ctx.beginPath();
+      ctx.arc(exp.x, exp.y, radius * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
 
       // Scattered sparks
       for (let i = 0; i < 6; i++) {
@@ -753,25 +741,20 @@ const Renderer = (() => {
       // Idle bobbing animation
       const bob = Math.sin(now / 300 + z.x) * 3;
 
-      // Green ground glow
-      const grd = ctx.createRadialGradient(z.x, z.y, 0, z.x, z.y, CELL_W * 0.6);
-      grd.addColorStop(0, "rgba(68, 255, 68, 0.12)");
-      grd.addColorStop(1, "rgba(68, 255, 68, 0)");
-      ctx.fillStyle = grd;
+      // Green ground circle (flat — no gradient)
+      ctx.globalAlpha = 0.08;
+      ctx.fillStyle = "#44ff44";
       ctx.beginPath();
-      ctx.arc(z.x, z.y, CELL_W * 0.6, 0, Math.PI * 2);
+      ctx.arc(z.x, z.y, CELL_W * 0.38, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalAlpha = 1;
 
-      // Zombie emoji with glow + bob
-      ctx.save();
-      ctx.shadowColor = "#44ff44";
-      ctx.shadowBlur = 10;
+      // Zombie emoji (no shadowBlur)
       ctx.font = `${Math.floor(CELL_H * 0.65)}px serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("\uD83E\uDDDF", z.x, z.y + bob);
-      ctx.shadowBlur = 0;
-      ctx.restore();
+      ctx.textBaseline = "alphabetic";
     });
   }
 
@@ -812,6 +795,183 @@ const Renderer = (() => {
     ctx.restore();
   }
 
+  // ---- Damage Flash (thin edge strips on the screen of the hit player only) ----
+  function drawDamageFlash(localPlayer, rgb) {
+    if (!localPlayer || !localPlayer.damageFlashTimer || localPlayer.damageFlashTimer <= 0) return;
+    const t = localPlayer.damageFlashTimer / DAMAGE_FLASH_MS; // 1→0
+    const alpha = (t * 0.55).toFixed(3);
+    const edgeW = Math.floor(CANVAS_WIDTH * 0.055);
+    const edgeH = Math.floor(CANVAS_HEIGHT * 0.065);
+    ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, edgeH);                        // top
+    ctx.fillRect(0, CANVAS_HEIGHT - edgeH, CANVAS_WIDTH, edgeH);   // bottom
+    ctx.fillRect(0, 0, edgeW, CANVAS_HEIGHT);                       // left
+    ctx.fillRect(CANVAS_WIDTH - edgeW, 0, edgeW, CANVAS_HEIGHT);   // right
+  }
+
+  // ---- Low-Health Vignette (flat edge fade — no gradient for perf) ----
+  function drawLowHealthVignette(p1, p2) {
+    const configs = [
+      { p: p1, rgb: "0,180,255" },
+      { p: p2, rgb: "255,60,60" },
+    ];
+    configs.forEach(({ p, rgb }) => {
+      if (!p.alive || p.health > LOW_HEALTH_THRESHOLD) return;
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220);
+      const alpha = (RENDER_CONFIG.EFFECTS.LOW_HEALTH_PULSE_ALPHA * pulse * 0.9).toFixed(3);
+      const edgeW = Math.floor(CANVAS_WIDTH * 0.18);
+      const edgeH = Math.floor(CANVAS_HEIGHT * 0.18);
+      ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
+      ctx.fillRect(0, 0, CANVAS_WIDTH, edgeH);           // top
+      ctx.fillRect(0, CANVAS_HEIGHT - edgeH, CANVAS_WIDTH, edgeH); // bottom
+      ctx.fillRect(0, 0, edgeW, CANVAS_HEIGHT);          // left
+      ctx.fillRect(CANVAS_WIDTH - edgeW, 0, edgeW, CANVAS_HEIGHT); // right
+    });
+  }
+
+  // ---- Health Packs ----
+  function drawHealthPacks(healthPacks) {
+    const now = Date.now();
+    healthPacks.forEach((hp) => {
+      const cx = hp.x;
+      const cy = hp.y;
+      const size = CELL_W * 0.28;
+      const pulse = 1 + 0.1 * Math.sin(now / 380);
+
+      // Ground circle (flat — no gradient)
+      ctx.globalAlpha = 0.13;
+      ctx.fillStyle = "#2ecc71";
+      ctx.beginPath();
+      ctx.arc(cx, cy, size * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Green cross (no shadowBlur)
+      ctx.fillStyle = "#2ecc71";
+      const thick = size * 0.38;
+      const arm = size * pulse;
+      ctx.fillRect(cx - arm, cy - thick, arm * 2, thick * 2); // horizontal bar
+      ctx.fillRect(cx - thick, cy - arm, thick * 2, arm * 2); // vertical bar
+
+      // "+HP" label
+      ctx.fillStyle = "#2ecc71";
+      ctx.font = "bold 11px Courier New";
+      ctx.textAlign = "center";
+      ctx.fillText("+HP", cx, cy + size + 10);
+    });
+  }
+
+  // ---- Floating Texts (damage numbers / kill-feed) ----
+  function drawFloatingTexts(floatingTexts) {
+    const now = Date.now();
+    floatingTexts.forEach((ft) => {
+      const elapsed = now - ft.startTime;
+      if (elapsed >= FLOATING_TEXT_DURATION_MS) return;
+      const progress = elapsed / FLOATING_TEXT_DURATION_MS; // 0→1
+      const alpha = 1 - progress;
+      const yOffset = progress * 42; // float upward 42px total
+
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = ft.color;
+      ctx.font = "bold 16px Courier New";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(ft.text, ft.x, ft.y - yOffset);
+      ctx.globalAlpha = 1;
+      ctx.textBaseline = "alphabetic";
+    });
+  }
+
+  // ---- Screen shake frame context ----
+  function beginFrame(sx, sy) {
+    ctx.save();
+    if (sx || sy) ctx.translate(sx, sy);
+  }
+
+  function endFrame() {
+    ctx.restore();
+  }
+
+  // ---- Speed Boost Pickups (yellow lightning bolt) ----
+  function drawSpeedBoostPickups(pickups) {
+    const now = Date.now();
+    pickups.forEach((p) => {
+      const cx = p.x;
+      const cy = p.y;
+      const size = CELL_W * 0.3;
+      const pulse = 1 + 0.12 * Math.sin(now / 300);
+
+      // Ground circle (flat — no gradient)
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = "#ffe600";
+      ctx.beginPath();
+      ctx.arc(cx, cy, size * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Lightning bolt shape (no shadowBlur)
+      ctx.save();
+      ctx.fillStyle = "#ffe600";
+      ctx.strokeStyle = "#fff8a0";
+      ctx.lineWidth = 1.2;
+      const s = size * pulse;
+      ctx.beginPath();
+      ctx.moveTo(cx + s * 0.22, cy - s);
+      ctx.lineTo(cx - s * 0.12, cy - s * 0.08);
+      ctx.lineTo(cx + s * 0.22, cy - s * 0.08);
+      ctx.lineTo(cx - s * 0.22, cy + s);
+      ctx.lineTo(cx + s * 0.12, cy + s * 0.08);
+      ctx.lineTo(cx - s * 0.22, cy + s * 0.08);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = "#ffe600";
+      ctx.font = "bold 10px Courier New";
+      ctx.textAlign = "center";
+      ctx.fillText("SPEED", cx, cy + size + 12);
+    });
+  }
+
+  // ---- Weapon Pickups (blue = rapidfire, orange = scatter) ----
+  function drawWeaponPickups(pickups) {
+    const now = Date.now();
+    pickups.forEach((p) => {
+      const cx = p.x;
+      const cy = p.y;
+      const size = CELL_W * 0.28;
+      const pulse = 1 + 0.1 * Math.sin(now / 340);
+      const isRapid = p.type === 'rapidfire';
+      const mainColor = isRapid ? "#3af" : "#f93";
+
+      // Ground circle (flat — no gradient)
+      ctx.globalAlpha = 0.13;
+      ctx.fillStyle = mainColor;
+      ctx.beginPath();
+      ctx.arc(cx, cy, size * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Gun silhouette (no shadowBlur)
+      ctx.save();
+      ctx.fillStyle = mainColor;
+      const s = size * pulse;
+      // Body
+      ctx.fillRect(cx - s * 0.65, cy - s * 0.22, s * 1.1, s * 0.44);
+      // Barrel
+      ctx.fillRect(cx + s * 0.45, cy - s * 0.12, s * 0.5, s * 0.24);
+      // Handle
+      ctx.fillRect(cx - s * 0.28, cy + s * 0.22, s * 0.3, s * 0.38);
+      ctx.restore();
+
+      ctx.fillStyle = mainColor;
+      ctx.font = "bold 10px Courier New";
+      ctx.textAlign = "center";
+      ctx.fillText(isRapid ? "RAPID" : "SCATTER", cx, cy + size + 12);
+    });
+  }
+
   return {
     init,
     invalidateMazeCache,
@@ -823,6 +983,14 @@ const Renderer = (() => {
     drawExplosions,
     drawZombies,
     drawFreezeEffect,
+    drawDamageFlash,
+    drawLowHealthVignette,
+    drawHealthPacks,
+    drawFloatingTexts,
+    beginFrame,
+    endFrame,
+    drawSpeedBoostPickups,
+    drawWeaponPickups,
     drawHUD,
     drawCountdown,
     drawRespawnTimer,

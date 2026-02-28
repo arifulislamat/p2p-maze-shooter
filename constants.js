@@ -10,7 +10,7 @@ const CONFIG = {
   PLAYER: {
     SIZE: 20,
     SPEED: 4, // px per frame
-    HEALTH: 5,
+    HEALTH: 12,
     RESPAWN_MS: 3000,
   },
   BULLET: {
@@ -45,11 +45,12 @@ const CONFIG = {
   },
   BOMB: {
     SPAWN_INTERVAL_MS: 5000,
-    FUSE_MS: 3000,
+    FUSE_MS: 1500,       // fuse duration — how quickly a bomb explodes
     BLAST_RADIUS: 120,
     BLAST_DAMAGE: 2,
     BLAST_ANIM_MS: 500,
-    MAX_BOMBS: 7,
+    MAX_BOMBS: 4,        // cap at game end of progress window
+    INITIAL_COUNT: 3,   // bombs allowed at the start of each maze
   },
   ZOMBIE: {
     SPAWN_INTERVAL_MS: 6000,
@@ -57,6 +58,26 @@ const CONFIG = {
     FREEZE_MS: 3000,
     HITBOX_RADIUS: 18,
     LIFETIME_MS: 10000,
+    SPEED: 0.8,           // px per physics tick chase speed
+  },
+  GAMEPLAY: {
+    DAMAGE_FLASH_MS: 150,             // how long the hit-flash overlay lasts
+    LOW_HEALTH_THRESHOLD: 4,          // HP at-or-below which the vignette activates
+    HEALTH_PACK_SPAWN_INTERVAL_MS: 8000,
+    HEALTH_PACK_MAX: 1,               // max simultaneous health packs
+    HEALTH_PACK_HEAL: 3,              // HP restored per pickup
+    FLOATING_TEXT_DURATION_MS: 1200,  // how long kill/damage popups float
+    URGENT_MAZE_TIME_S: 10,           // seconds remaining before urgency tick+shake fires
+    SPEED_BOOST_SPAWN_INTERVAL_MS: 12000,
+    SPEED_BOOST_MAX: 1,               // max simultaneous speed-boost pickups
+    SPEED_BOOST_DURATION_MS: 4000,    // how long the speed boost lasts
+    SPEED_BOOST_MULTIPLIER: 1.6,      // speed multiplier while boosted
+    WEAPON_SPAWN_INTERVAL_MS: 10000,
+    WEAPON_MAX: 1,                    // max simultaneous weapon pickups on field
+    RAPID_FIRE_DURATION_MS: 5000,     // how long rapid-fire mode lasts
+    RAPID_FIRE_RATE_MS: 50,           // fire-rate cooldown while in rapid-fire mode
+    SCATTER_DURATION_MS: 5000,        // how long scatter-shot mode lasts
+    SCATTER_SPREAD_DEG: 25,           // angle (degrees) between scatter bullets
   },
   COLORS: {
     background: "#0a0a1a",
@@ -355,3 +376,26 @@ const ZOMBIE_MAX = CONFIG.ZOMBIE.MAX_ZOMBIES;
 const ZOMBIE_FREEZE_MS = CONFIG.ZOMBIE.FREEZE_MS;
 const ZOMBIE_HITBOX_RADIUS = CONFIG.ZOMBIE.HITBOX_RADIUS;
 const ZOMBIE_LIFETIME = CONFIG.ZOMBIE.LIFETIME_MS;
+const ZOMBIE_SPEED = CONFIG.ZOMBIE.SPEED;
+
+// Bomb initial count (ramps from INITIAL_COUNT → MAX_BOMBS over maze duration)
+const BOMB_INITIAL_COUNT = CONFIG.BOMB.INITIAL_COUNT;
+
+// Gameplay feel constants
+const DAMAGE_FLASH_MS = CONFIG.GAMEPLAY.DAMAGE_FLASH_MS;
+const LOW_HEALTH_THRESHOLD = CONFIG.GAMEPLAY.LOW_HEALTH_THRESHOLD;
+const HEALTH_PACK_SPAWN_INTERVAL = CONFIG.GAMEPLAY.HEALTH_PACK_SPAWN_INTERVAL_MS;
+const HEALTH_PACK_MAX = CONFIG.GAMEPLAY.HEALTH_PACK_MAX;
+const HEALTH_PACK_HEAL = CONFIG.GAMEPLAY.HEALTH_PACK_HEAL;
+const FLOATING_TEXT_DURATION_MS = CONFIG.GAMEPLAY.FLOATING_TEXT_DURATION_MS;
+const URGENT_MAZE_TIME_S = CONFIG.GAMEPLAY.URGENT_MAZE_TIME_S;
+const SPEED_BOOST_SPAWN_INTERVAL = CONFIG.GAMEPLAY.SPEED_BOOST_SPAWN_INTERVAL_MS;
+const SPEED_BOOST_MAX = CONFIG.GAMEPLAY.SPEED_BOOST_MAX;
+const SPEED_BOOST_DURATION_MS = CONFIG.GAMEPLAY.SPEED_BOOST_DURATION_MS;
+const SPEED_BOOST_MULTIPLIER = CONFIG.GAMEPLAY.SPEED_BOOST_MULTIPLIER;
+const WEAPON_SPAWN_INTERVAL = CONFIG.GAMEPLAY.WEAPON_SPAWN_INTERVAL_MS;
+const WEAPON_MAX = CONFIG.GAMEPLAY.WEAPON_MAX;
+const RAPID_FIRE_DURATION_MS = CONFIG.GAMEPLAY.RAPID_FIRE_DURATION_MS;
+const RAPID_FIRE_RATE_MS = CONFIG.GAMEPLAY.RAPID_FIRE_RATE_MS;
+const SCATTER_DURATION_MS = CONFIG.GAMEPLAY.SCATTER_DURATION_MS;
+const SCATTER_SPREAD_DEG = CONFIG.GAMEPLAY.SCATTER_SPREAD_DEG;
