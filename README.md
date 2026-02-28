@@ -23,7 +23,7 @@ A real-time peer-to-peer multiplayer shooter built entirely with **vanilla JavaS
 ## Features
 
 - **Peer-to-peer multiplayer** — Direct browser-to-browser via WebRTC (PeerJS). No game server needed.
-- **Host-authoritative networking** — Host runs physics, broadcasts state; guest sends inputs. Cheat-resistant by design.
+- **Host-authoritative networking** — Host runs physics, broadcasts state; guest sends only inputs. The guest acts as a "dumb terminal": it applies host-sent positions and state directly, with no client-side prediction or interpolation. Cheat-resistant by design.
 - **6 unique maze arenas** — Each with distinct layouts: Arena Classic, The Labyrinth, Bomb Alley, Fortress, Snake Pit, Crossfire.
 - **Automatic map rotation** — Maps shuffle and rotate every 60 seconds. After 6 maps (6 min), highest score wins.
 - **Dynamic hazards** — Bombs spawn randomly with a heartbeat fuse animation and area-of-effect blast. Zombies roam the maze and freeze you on contact.
@@ -62,14 +62,17 @@ Then open `http://localhost:8000` in your browser.
 | Chrome      | ✅ Supported |       |
 | Edge        | ✅ Supported |       |
 | Brave       | ✅ Supported |       |
-| **Firefox** | ✅ Supported |       |
+| Firefox.    | ✅ Supported |       |
 | Safari      | ✅ Supported |       |
+
 
 #### Local Network Play (Same Wi-Fi, Different Devices)
 
-If you and your opponent are on the **same local network** (e.g., same Wi-Fi), browsers hide real local IP addresses by default using mDNS obfuscation — a privacy feature that can prevent WebRTC from establishing a direct connection.
+**Note:** The mDNS (local IP obfuscation) issue only affects desktop browsers. Mobile browsers (iOS/Android) do **not** use mDNS and do not require any changes for local network play.
 
-**You only need to change this setting if you are playing on the same local network and the connection is failing.**
+If you and your opponent are on the **same local network** (e.g., same Wi-Fi) **on desktop**, browsers hide real local IP addresses by default using mDNS obfuscation — a privacy feature that can prevent WebRTC from establishing a direct connection.
+
+**You only need to change this setting if you are playing on the same local network on desktop and the connection is failing.**
 
 <details>
 <summary><strong>Firefox</strong></summary>
@@ -141,12 +144,21 @@ Host                              Guest
 ┌──────────┐   WebRTC (PeerJS)   ┌──────────┐
 │ Input    │◄───── inputs ───────│ Input    │
 │ Physics  │                     │          │
-│ Game Loop│───── full state ───►│ Renderer │
+│ Game Loop│───── state & corr. ─►│ Renderer │
 │ Renderer │                     │          │
 └──────────┘                     └──────────┘
 ```
 
-The **host** runs the authoritative simulation (physics, collisions, spawning) and broadcasts the full game state ~60 times per second. The **guest** sends only input deltas and applies received state for rendering.
+The **host** runs the authoritative simulation (physics, collisions, spawning) and broadcasts player positions and state at 60 Hz, with full corrections (health, scores, bombs, zombies, etc.) at 10 Hz. The **guest** sends only input deltas and applies received state directly for rendering—no prediction or interpolation. All time-based events (explosions, zombies) are synchronized using elapsed time, not raw timestamps, for robust, clock-skew-proof gameplay.
+
+**Guest rendering always runs at 60 Hz** for smooth visuals, regardless of network correction rate.
+
+## Technical Notes
+
+- The guest is a "dumb terminal": it applies host-sent positions and state directly, with no client-side prediction or interpolation.
+- Host sends player positions and state at 60 Hz, and full corrections at 10 Hz.
+- All time-based events (explosions, zombies) are synchronized using elapsed time, not raw timestamps, to avoid clock skew and animation bugs.
+- Guest rendering always runs at 60 Hz for smooth gameplay.
 
 ## Game Rules
 
