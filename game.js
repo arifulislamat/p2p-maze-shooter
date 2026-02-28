@@ -69,7 +69,8 @@ const Game = (() => {
   const CORRECTION_INTERVAL_MS = 100; // 10 Hz authority corrections
   // Holds saved game state to restore after host page reload
   let pendingResumeState = null;
-  // Host-authoritative P2 state received at 60 Hz (guest renders this directly)
+  // Host-authoritative player states received at 60 Hz (guest applies directly)
+  let hostP1State = null;
   let hostP2State = null;
 
   // ---- Get spawn position from active maze ----
@@ -720,9 +721,9 @@ const Game = (() => {
     });
   }
 
-  // Host sends its input + authoritative P2 state to guest every frame.
-  // Host keys → guest simulates P1 locally.  P2 state → guest renders directly
-  // (no client-side prediction, eliminates jitter).
+  // Host sends its input + authoritative positions to guest every frame.
+  // Host keys → guest simulates P1 locally (for shooting); positions → guest
+  // feeds interpolation buffers for jitter-free rendering of both players.
   function sendHostInput() {
     Network.send({
       type: "host_input",
@@ -733,6 +734,7 @@ const Game = (() => {
         right: isAnyKeyDown(GAME_CONFIG.INPUT.MOVE_RIGHT),
         shoot: isAnyKeyDown(GAME_CONFIG.INPUT.SHOOT),
       },
+      p1: { x: p1.x, y: p1.y, dir: p1.dir },
       p2: { x: p2.x, y: p2.y, dir: p2.dir },
     });
   }
@@ -753,10 +755,11 @@ const Game = (() => {
         p2Score: p2.score,
       });
     }
-    const mazeElapsed = (Date.now() - mazeRotationStart) / 1000;
+    const corrNow = Date.now();
+    const mazeElapsed = (corrNow - mazeRotationStart) / 1000;
     const mazeTimeLeft = Math.max(0, MAZE_ROTATION_MS / 1000 - mazeElapsed);
     const totalMatchTime = (MAZE_KEYS.length * MAZE_ROTATION_MS) / 1000;
-    const matchElapsed = (Date.now() - matchStartTime) / 1000;
+    const matchElapsed = (corrNow - matchStartTime) / 1000;
     const matchTimeLeft = Math.max(0, totalMatchTime - matchElapsed);
 
     Network.send({
@@ -786,9 +789,9 @@ const Game = (() => {
       explosions: explosions.map((e) => ({
         x: e.x,
         y: e.y,
-        startTime: e.startTime,
+        elapsed: corrNow - e.startTime,
       })),
-      zombies: zombies.map((z) => ({ x: z.x, y: z.y, spawnTime: z.spawnTime })),
+      zombies: zombies.map((z) => ({ x: z.x, y: z.y, elapsed: corrNow - z.spawnTime })),
       gameState,
       winner,
       countdownValue,
@@ -802,7 +805,8 @@ const Game = (() => {
 
   // Host broadcasts full game state to guest every frame
   function broadcastState(fullSync) {
-    const mazeElapsed = (Date.now() - mazeRotationStart) / 1000;
+    const broadcastNow = Date.now();
+    const mazeElapsed = (broadcastNow - mazeRotationStart) / 1000;
     const mazeTimeLeft = Math.max(0, MAZE_ROTATION_MS / 1000 - mazeElapsed);
     const totalMatchTime = (MAZE_KEYS.length * MAZE_ROTATION_MS) / 1000;
     const matchElapsed = (Date.now() - matchStartTime) / 1000;
@@ -842,9 +846,9 @@ const Game = (() => {
       explosions: explosions.map((e) => ({
         x: e.x,
         y: e.y,
-        startTime: e.startTime,
+        elapsed: broadcastNow - e.startTime,
       })),
-      zombies: zombies.map((z) => ({ x: z.x, y: z.y, spawnTime: z.spawnTime })),
+      zombies: zombies.map((z) => ({ x: z.x, y: z.y, elapsed: broadcastNow - z.spawnTime })),
       gameState,
       winner,
       countdownValue,
@@ -891,8 +895,21 @@ const Game = (() => {
 
     bullets = data.bullets;
     if (data.bombs) bombs = data.bombs;
-    if (data.explosions) explosions = data.explosions;
-    if (data.zombies) zombies = data.zombies;
+    // Convert elapsed times to local timestamps to avoid host/guest clock skew
+    if (data.explosions) {
+      const recvNow = Date.now();
+      explosions = data.explosions.map((e) => ({
+        x: e.x, y: e.y,
+        startTime: e.startTime !== undefined ? e.startTime : recvNow - (e.elapsed || 0),
+      }));
+    }
+    if (data.zombies) {
+      const recvNow = Date.now();
+      zombies = data.zombies.map((z) => ({
+        x: z.x, y: z.y,
+        spawnTime: z.spawnTime !== undefined ? z.spawnTime : recvNow - (z.elapsed || 0),
+      }));
+    }
     // Sync freeze timers from player state
     if (data.p1.freezeTimer !== undefined) p1.freezeTimer = data.p1.freezeTimer;
     if (data.p2.freezeTimer !== undefined) p2.freezeTimer = data.p2.freezeTimer;
@@ -909,15 +926,15 @@ const Game = (() => {
     if (data.sounds && data.sounds.length > 0) {
       Sound.playRemote(data.sounds);
     }
+
+    // Seed host position state from the synced positions
+    hostP1State = { x: data.p1.x, y: data.p1.y, dir: data.p1.dir };
+    hostP2State = { x: data.p2.x, y: data.p2.y, dir: data.p2.dir };
   }
 
   // Guest applies lightweight host corrections (10 Hz).
-  // P1 position: smoothly converged via per-tick lerp (guest simulates P1 locally).
-  // P2 position: NOT corrected here — guest receives P2 at 60 Hz via host_input.
+  // Positions are applied directly (both players received at 60 Hz via host_input).
   // Authority state (health, score, alive, game state) is snapped immediately.
-  const SNAP_DISTANCE_SQ = 900; // 30px — above this, snap instead of lerp
-  const CORRECTION_RATE = 0.15; // per-tick exponential lerp (P1 only)
-  let correctionTarget = { p1: null };
 
   function applyCorrections(data) {
     // Detect maze change (host rotated to a new maze)
@@ -934,14 +951,10 @@ const Game = (() => {
       mazeRotationStart = data.mazeRotationStart;
     }
 
-    // P1 position: store target for smooth per-tick convergence.
-    // P2 position: skipped — guest receives it at 60 Hz via host_input.
-    correctionTarget.p1 = { x: data.p1.x, y: data.p1.y };
-
-    // P1: snap direction (host is authoritative for P1)
-    p1.dir = data.p1.dir;
-    // P2: do NOT snap direction — guest controls P2 locally, and snapping
-    // the host's RTT-delayed direction causes a 1-frame rotation flicker.
+    // Update host position state from corrections (backup at 10 Hz;
+    // primary 60 Hz data comes from host_input).
+    hostP1State = { x: data.p1.x, y: data.p1.y, dir: data.p1.dir };
+    hostP2State = { x: data.p2.x, y: data.p2.y, dir: data.p2.dir };
 
     // Authority state — snap immediately for both players
     [
@@ -957,8 +970,21 @@ const Game = (() => {
 
     // Host-only entities — guest doesn't spawn these, accept host data
     if (data.bombs) bombs = data.bombs;
-    if (data.explosions) explosions = data.explosions;
-    if (data.zombies) zombies = data.zombies;
+    // Convert elapsed times to local timestamps to avoid host/guest clock skew
+    if (data.explosions) {
+      const recvNow = Date.now();
+      explosions = data.explosions.map((e) => ({
+        x: e.x, y: e.y,
+        startTime: e.startTime !== undefined ? e.startTime : recvNow - (e.elapsed || 0),
+      }));
+    }
+    if (data.zombies) {
+      const recvNow = Date.now();
+      zombies = data.zombies.map((z) => ({
+        x: z.x, y: z.y,
+        spawnTime: z.spawnTime !== undefined ? z.spawnTime : recvNow - (z.elapsed || 0),
+      }));
+    }
 
     // Game state authority
     gameState = data.gameState;
@@ -970,32 +996,18 @@ const Game = (() => {
     if (data.isDraw !== undefined) isDraw = data.isDraw;
   }
 
-  // Smooth per-tick correction: converge P1 toward host position each physics frame.
-  // P2 is not corrected here — it's set directly from host_input at 60 Hz.
-  function applyCorrectionSmoothing() {
-    const t1 = correctionTarget.p1;
-    if (!t1) return;
-    const dx = t1.x - p1.x;
-    const dy = t1.y - p1.y;
-    const distSq = dx * dx + dy * dy;
-    if (distSq > SNAP_DISTANCE_SQ) {
-      p1.x = t1.x;
-      p1.y = t1.y;
-      correctionTarget.p1 = null;
-    } else if (distSq > 0.25) {
-      p1.x += dx * CORRECTION_RATE;
-      p1.y += dy * CORRECTION_RATE;
-    } else {
-      correctionTarget.p1 = null;
-    }
-  }
+
 
   // ---- Render Interpolation Helpers ----
   // Save physics positions before each tick so the renderer can interpolate
   // between the previous and current state for sub-tick smoothness.
   function savePhysicsPositions() {
-    p1.prevX = p1.x; p1.prevY = p1.y;
-    p2.prevX = p2.x; p2.prevY = p2.y;
+    // Players: only save for host/local (physics-driven).
+    // Guest receives positions directly from host — no sub-frame interpolation.
+    if (gameMode !== "online-guest") {
+      p1.prevX = p1.x; p1.prevY = p1.y;
+      p2.prevX = p2.x; p2.prevY = p2.y;
+    }
     for (let i = 0; i < bullets.length; i++) {
       bullets[i].prevX = bullets[i].x;
       bullets[i].prevY = bullets[i].y;
@@ -1003,16 +1015,20 @@ const Game = (() => {
   }
 
   function interpolateForRender(alpha) {
-    // Players
-    p1._physX = p1.x; p1._physY = p1.y;
-    p2._physX = p2.x; p2._physY = p2.y;
-    if (p1.prevX !== undefined) {
-      p1.x = p1.prevX + (p1.x - p1.prevX) * alpha;
-      p1.y = p1.prevY + (p1.y - p1.prevY) * alpha;
-    }
-    if (p2.prevX !== undefined) {
-      p2.x = p2.prevX + (p2.x - p2.prevX) * alpha;
-      p2.y = p2.prevY + (p2.y - p2.prevY) * alpha;
+    // Players: only interpolate for host/local (physics-driven).
+    // Guest applies host positions directly every frame — skip interpolation
+    // to avoid fighting the network-received positions.
+    if (gameMode !== "online-guest") {
+      p1._physX = p1.x; p1._physY = p1.y;
+      p2._physX = p2.x; p2._physY = p2.y;
+      if (p1.prevX !== undefined) {
+        p1.x = p1.prevX + (p1.x - p1.prevX) * alpha;
+        p1.y = p1.prevY + (p1.y - p1.prevY) * alpha;
+      }
+      if (p2.prevX !== undefined) {
+        p2.x = p2.prevX + (p2.x - p2.prevX) * alpha;
+        p2.y = p2.prevY + (p2.y - p2.prevY) * alpha;
+      }
     }
     // Bullets
     for (let i = 0; i < bullets.length; i++) {
@@ -1026,8 +1042,10 @@ const Game = (() => {
   }
 
   function restorePhysicsPositions() {
-    p1.x = p1._physX; p1.y = p1._physY;
-    p2.x = p2._physX; p2.y = p2._physY;
+    if (gameMode !== "online-guest") {
+      p1.x = p1._physX; p1.y = p1._physY;
+      p2.x = p2._physX; p2.y = p2._physY;
+    }
     for (let i = 0; i < bullets.length; i++) {
       bullets[i].x = bullets[i]._physX;
       bullets[i].y = bullets[i]._physY;
@@ -1092,9 +1110,10 @@ const Game = (() => {
         remoteInput = data.keys;
       }
     } else if (gameMode === "online-guest") {
-      // Guest receives host's input for local P1 simulation + authoritative P2 state
+      // Guest receives host's input + authoritative positions (60 Hz)
       if (data.type === "host_input") {
         remoteInput = data.keys;
+        if (data.p1) hostP1State = data.p1;
         if (data.p2) hostP2State = data.p2;
       }
       // Guest receives authority corrections from host (10 Hz)
@@ -1564,36 +1583,41 @@ const Game = (() => {
 
     // --- Update ---
     if (gameMode === "online-guest") {
-      // Guest runs full local physics at 60 Hz for smooth rendering
+      // Guest physics: bullets/bombs/zombies at 60 Hz; positions from host.
       if (runPhysics) {
-        // Send input at physics rate (60 Hz) — no excess messages
         sendLocalInput();
         if (gameState === STATE.COUNTDOWN) {
           updateCountdown();
         }
         if (gameState === STATE.PLAYING) {
-          // P1 = remote (host's input) — simulate locally for smooth rendering
+          // P1: process host's key input for responsive bullet creation.
+          // Position will be overridden below by authoritative host state.
           processRemoteInput(p1);
-          applyCorrectionSmoothing(); // lerp P1 toward host authority
 
-          // P2 = host-authoritative position (no local prediction).
-          // Guest only handles shooting locally for responsive bullet creation.
-          if (hostP2State) {
-            p2.x = hostP2State.x;
-            p2.y = hostP2State.y;
-            p2.dir = hostP2State.dir;
-          }
+          // P2: guest handles shooting locally for responsive bullet creation.
           if (p2.alive && p2.freezeTimer <= 0 && isAnyKeyDown(GAME_CONFIG.INPUT.SHOOT)) {
             tryShoot(p2);
           }
 
           updateBullets();
-          // Bomb/zombie: tick existing ones but DON'T spawn new ones (host is authoritative)
           updateBombs(PHYSICS_STEP_MS, true);
           updateZombies(PHYSICS_STEP_MS, true);
           updateRespawns(PHYSICS_STEP_MS);
-          // NO checkMazeRotation — host sends maze changes via corrections
         }
+      }
+
+      // Apply authoritative host positions EVERY frame (not gated by physics)
+      // so rendering is as smooth as the display refresh rate — the same
+      // "dumb terminal" model used pre-632e3da that the user found smooth.
+      if (hostP1State) {
+        p1.x = hostP1State.x;
+        p1.y = hostP1State.y;
+        p1.dir = hostP1State.dir;
+      }
+      if (hostP2State) {
+        p2.x = hostP2State.x;
+        p2.y = hostP2State.y;
+        p2.dir = hostP2State.dir;
       }
     } else if (runPhysics) {
       // Host / local: run all physics at fixed 60 Hz
@@ -2034,6 +2058,8 @@ const Game = (() => {
     lastBombSpawn = Date.now();
     zombies = [];
     lastZombieSpawn = Date.now();
+    hostP1State = null;
+    hostP2State = null;
 
     init();
     if (resume) {
