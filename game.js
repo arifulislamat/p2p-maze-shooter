@@ -998,6 +998,11 @@ const Game = (() => {
       : "Creating room...";
     document.getElementById("connectionStatus").className = "";
 
+    // Guard to prevent onPeerClosed from scheduling a second retry when
+    // onError has already queued one (e.g. after unavailable-id, PeerJS
+    // auto-destroys the peer which fires both callbacks).
+    let retryScheduled = false;
+
     const hostCallbacks = {
       onReady: (roomCode) => {
         document.getElementById("roomCode").textContent = roomCode;
@@ -1045,6 +1050,7 @@ const Game = (() => {
         }
       },
       onPeerClosed: () => {
+        if (retryScheduled) return; // onError already has a retry in flight
         const code = Network.getLastRoomCode();
         if (
           (gameMode !== "online-host" && gameMode !== "online-guest") &&
@@ -1059,13 +1065,19 @@ const Game = (() => {
       onError: (msg) => {
         const code = Network.getLastRoomCode();
         const isIdTaken = msg === "Room code already in use. Try again.";
-        // For transient errors (not an ID conflict) auto-retry with same code
-        if (!isIdTaken && code && gameMode !== "online-host") {
+        // In lobby (not mid-game), retry for all transient errors.
+        // unavailable-id means the server still has our stale peer ID registered
+        // (e.g. the TCP connection was abruptly dropped when the app was
+        // backgrounded and the server hasn't expired it yet). Retry silently
+        // with a slightly longer delay to give the server time to release it.
+        if (code && gameMode !== "online-host" && gameMode !== "online-guest") {
           console.warn("[Game] Host lobby error — retrying:", msg);
-          document.getElementById("connectionStatus").textContent =
-            "Connection error. Retrying...";
+          document.getElementById("connectionStatus").textContent = isIdTaken
+            ? "Reconnecting room..."
+            : "Connection error. Retrying...";
           document.getElementById("connectionStatus").className = "";
-          setTimeout(() => setupHostRoom(code), 2000);
+          retryScheduled = true;
+          setTimeout(() => setupHostRoom(code), isIdTaken ? 3000 : 2000);
         } else {
           document.getElementById("connectionStatus").textContent = msg;
           document.getElementById("connectionStatus").className =
