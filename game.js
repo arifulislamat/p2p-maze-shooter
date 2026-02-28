@@ -72,6 +72,9 @@ const Game = (() => {
   // Host-authoritative player states received at 60 Hz (guest applies directly)
   let hostP1State = null;
   let hostP2State = null;
+  // Sequence counter stamped on every host_input; guest drops older packets
+  let hostInputSeq = 0;
+  let lastHostInputSeq = 0;
 
   // ---- Get spawn position from active maze ----
   // Deterministic corner-based spawns that rotate each maze.
@@ -961,6 +964,7 @@ const Game = (() => {
   function sendHostInput() {
     Network.send({
       type: "host_input",
+      seq: ++hostInputSeq,
       keys: {
         up: isAnyKeyDown(GAME_CONFIG.INPUT.MOVE_UP),
         down: isAnyKeyDown(GAME_CONFIG.INPUT.MOVE_DOWN),
@@ -1371,12 +1375,12 @@ const Game = (() => {
     // state so it converges to the current match state.
     if (data.type === "ready" && gameMode === "online-host") {
       console.log("[Game] Guest sent 'ready' while game is running — bootstrapping");
-      Network.send({
+      Network.sendReliable({
         type: "config",
         mazeKey: selectedMazeKey,
         mazeOrder: mazeOrder,
       });
-      Network.send({
+      Network.sendReliable({
         type: "resync",
         mazeKey: selectedMazeKey,
         mazeOrder: mazeOrder,
@@ -1396,6 +1400,9 @@ const Game = (() => {
     } else if (gameMode === "online-guest") {
       // Guest receives host's input + authoritative positions (60 Hz)
       if (data.type === "host_input") {
+        // Drop stale packets (unordered unreliable channel may deliver out of order)
+        if (data.seq !== undefined && data.seq <= lastHostInputSeq) return;
+        if (data.seq !== undefined) lastHostInputSeq = data.seq;
         remoteInput = data.keys;
         if (data.p1) hostP1State = data.p1;
         if (data.p2) hostP2State = data.p2;
@@ -1465,7 +1472,7 @@ const Game = (() => {
         stopReconnecting();
         // Re-send resync so guest can restore maze state without resetting match
         if (gameMode === "online-host") {
-          Network.send({
+          Network.sendReliable({
             type: "resync",
             mazeKey: selectedMazeKey,
             mazeOrder: mazeOrder,
@@ -1479,7 +1486,7 @@ const Game = (() => {
         // Guest: tell host we're ready (host may have reloaded and is in lobby
         // waiting for the "ready" handshake before starting the game)
         if (gameMode === "online-guest") {
-          Network.send({ type: "ready" });
+          Network.sendReliable({ type: "ready" });
         }
       },
       onData: handleNetworkData,
@@ -1658,14 +1665,14 @@ const Game = (() => {
             document.getElementById("connectionStatus").textContent = "Starting game...";
             setTimeout(() => {
               startOnlineGame(true);
-              Network.send({
+              Network.sendReliable({
                 type: "config",
                 mazeKey: selectedMazeKey,
                 mazeOrder: mazeOrder,
               });
               // Always follow with resync + full state so guest gets correct
               // maze progress and scores (critical after host page reload)
-              Network.send({
+              Network.sendReliable({
                 type: "resync",
                 mazeKey: selectedMazeKey,
                 mazeOrder: mazeOrder,
@@ -1818,7 +1825,7 @@ const Game = (() => {
           "Connected! Waiting for host to start...";
         document.getElementById("joinStatus").className = "status-connected";
         // Tell host we're ready to receive
-        Network.send({ type: "ready" });
+        Network.sendReliable({ type: "ready" });
       },
       onData: handleNetworkData,
       onDisconnected: handleDisconnect,
@@ -2345,7 +2352,7 @@ const Game = (() => {
     if (gameState !== STATE.GAME_OVER) return;
     if (gameMode === "online-guest") {
       // Ask the host to restart
-      Network.send({ type: "restart_request" });
+      Network.sendReliable({ type: "restart_request" });
     } else if (gameMode === "online-host" || gameMode === "local") {
       restartGame();
     }
@@ -2442,6 +2449,9 @@ const Game = (() => {
     }
     lastResync = Date.now();
     lastDataReceived = Date.now();
+    // Reset packet sequence so stale seq from previous session doesn't block new packets
+    hostInputSeq = 0;
+    lastHostInputSeq = 0;
     lastTime = performance.now();
     physicsAccumulator = 0;
     requestAnimationFrame(gameLoop);
@@ -2486,7 +2496,7 @@ const Game = (() => {
           document.getElementById("joinStatus").textContent =
             "Connected! Waiting for host to start...";
           document.getElementById("joinStatus").className = "status-connected";
-          Network.send({ type: "ready" });
+          Network.sendReliable({ type: "ready" });
         },
         onData: handleNetworkData,
         onDisconnected: handleDisconnect,

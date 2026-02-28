@@ -33,6 +33,11 @@ const Network = (() => {
   // doesn't incorrectly fire onPeerClosed into reconnect callbacks.
   const intentionallyDestroyedPeers = new Set();
 
+  // ---- Reliable-over-unreliable: deduplicate retransmitted critical messages ----
+  let reliableMsgSeq = 0;
+  const seenRids = new Set();
+  const ridHistory = []; // ring-buffer to prune seenRids (cap at 128)
+
   // Generate a room code (no confusable chars)
   function generateRoomCode() {
     let code = "";
@@ -166,7 +171,7 @@ const Network = (() => {
       const peerId = NETWORK_CONFIG.PEER_PREFIX + lastRoomCode;
       console.log("[Net] Connecting to host:", peerId);
       conn = peer.connect(peerId, {
-        reliable: true,
+        reliable: false,   // unordered + unreliable = true UDP; eliminates head-of-line blocking
         serialization: "json",
       });
       // Capture conn now; the module-level `conn` may be replaced before the timeout fires
@@ -274,7 +279,7 @@ const Network = (() => {
       if (peer.open) {
         // Peer is alive — connect to host directly
         console.log("[Net] Guest connecting to host:", hostPeerId);
-        conn = peer.connect(hostPeerId, { reliable: true, serialization: "json" });
+        conn = peer.connect(hostPeerId, { reliable: false, serialization: "json" });
         const capturedConn = conn;
         setTimeout(() => setupConnection(capturedConn), 0);
       } else if (peer.disconnected) {
@@ -295,7 +300,7 @@ const Network = (() => {
     peer.on("open", (id) => {
       console.log("[Net] Guest peer open, id:", id, "connecting to:", hostPeerId);
       const targetId = NETWORK_CONFIG.PEER_PREFIX + lastRoomCode;
-      conn = peer.connect(targetId, { reliable: true, serialization: "json" });
+      conn = peer.connect(targetId, { reliable: false, serialization: "json" });
       const capturedConn = conn;
       setTimeout(() => setupConnection(capturedConn), 0);
     });
@@ -433,7 +438,15 @@ const Network = (() => {
         console.log("[Net] Got data before open event — marking connected");
         markConnected();
       }
-      if (connRef === conn && callbacks.onData) callbacks.onData(data);
+      if (connRef !== conn) return;
+      // Deduplicate reliably-sent messages (they arrive up to 3×)
+      if (data._rid) {
+        if (seenRids.has(data._rid)) return;
+        seenRids.add(data._rid);
+        ridHistory.push(data._rid);
+        if (ridHistory.length > 128) seenRids.delete(ridHistory.shift());
+      }
+      if (callbacks.onData) callbacks.onData(data);
     });
 
     connRef.on("close", () => {
@@ -528,6 +541,16 @@ const Network = (() => {
     return lastRoomCode;
   }
 
+  // ---- Send a critical message reliably over the unreliable channel ----
+  // Stamps a unique _rid and transmits up to 3 times; receiver deduplicates.
+  function sendReliable(data) {
+    const rid = (++reliableMsgSeq) + "-" + Date.now();
+    const payload = Object.assign({}, data, { _rid: rid });
+    send(payload);
+    setTimeout(() => { if (conn && conn.open) conn.send(payload); }, 40);
+    setTimeout(() => { if (conn && conn.open) conn.send(payload); }, 95);
+  }
+
   return {
     createHost,
     createHostWithCode,
@@ -535,6 +558,7 @@ const Network = (() => {
     restoreHost,
     restoreGuest,
     send,
+    sendReliable,
     disconnect,
     getIsHost,
     isConnected,
