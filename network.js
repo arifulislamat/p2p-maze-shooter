@@ -10,17 +10,12 @@ const Network = (() => {
     // Debug level: 2 (warnings) locally, 0 (silent) in production
     PEER_DEBUG: typeof location !== "undefined" && location.hostname === "localhost" ? 2 : 0,
     ICE_SERVERS: [
-      // Google STUN
+      // Google STUN (5 known-good servers)
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:3478" },
       { urls: "stun:stun2.l.google.com:19302" },
       { urls: "stun:stun3.l.google.com:3478" },
       { urls: "stun:stun4.l.google.com:19302" },
-      // VoIP Community STUN
-      { urls: "stun:stun.ekiga.net" },
-      { urls: "stun:stun.voipbuster.com" },
-      { urls: "stun:stun.voipstunt.com" },
-      { urls: "stun:stun.xten.com" },
     ],
     OPEN_POLL_INTERVAL_MS: 100,
     OPEN_POLL_LOG_EVERY: 10,

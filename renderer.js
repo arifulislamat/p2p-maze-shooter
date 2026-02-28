@@ -699,10 +699,10 @@ const Renderer = (() => {
   function drawExplosions(explosions) {
     const now = Date.now();
     explosions.forEach((exp) => {
-      const elapsed = now - exp.startTime;
+      const elapsed = Math.max(0, now - exp.startTime);
       const progress = Math.min(1, elapsed / BOMB_BLAST_ANIM_MS); // 0→1
       const alpha = 1 - progress;
-      const radius = BOMB_BLAST_RADIUS * (0.3 + 0.7 * progress);
+      const radius = Math.max(0, BOMB_BLAST_RADIUS * (0.3 + 0.7 * progress));
 
       ctx.save();
 
@@ -738,7 +738,7 @@ const Renderer = (() => {
         const sy = exp.y + Math.sin(angle) * dist;
         ctx.fillStyle = `rgba(255, 255, 100, ${alpha})`;
         ctx.beginPath();
-        ctx.arc(sx, sy, 3 * (1 - progress), 0, Math.PI * 2);
+        ctx.arc(sx, sy, Math.max(0, 3 * (1 - progress)), 0, Math.PI * 2);
         ctx.fill();
       }
 
