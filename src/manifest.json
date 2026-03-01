@@ -1,0 +1,20 @@
+{
+  "name": "P2P Maze Shooter",
+  "short_name": "MazeShooter",
+  "description": "A free real-time peer-to-peer multiplayer shooter in the browser. Share a room code and battle a friend across retro-neon maze arenas — no download, no server.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a1a",
+  "theme_color": "#0a0a1a",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "assets/apple-touch-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
