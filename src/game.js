@@ -1589,7 +1589,10 @@ const Game = (() => {
 
   function buildShareLink(roomCode) {
     const url = new URL(window.location.href);
-    url.searchParams.set("room", roomCode);
+    // Use hash fragment so Messenger/WhatsApp don't strip the room code.
+    // Clear any legacy ?room= param to keep the URL clean.
+    url.searchParams.delete("room");
+    url.hash = "room=" + roomCode;
     return url.toString();
   }
 

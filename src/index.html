@@ -20,21 +20,45 @@
     />
     <meta name="robots" content="index, follow" />
     <meta name="application-name" content="P2P Maze Shooter" />
+    <!-- Canonical: safe to include — hash fragments (#room=CODE) are client-side
+         only and never stripped by scrapers, so this doesn't affect invite links.
+         Helps Google consolidate PageRank on the authoritative base URL. -->
     <link rel="canonical" href="https://arifulislamat.github.io/p2p-maze-shooter/" />
 
     <!-- ===== Open Graph / Facebook ===== -->
+    <!-- og:url intentionally omitted: if set, Messenger/Facebook navigate users
+         to og:url on click (losing #room=CODE). Without it, the actual shared
+         URL (with hash) is used, so room-code invite links keep working. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="P2P Maze Shooter" />
-    <meta property="og:url" content="https://arifulislamat.github.io/p2p-maze-shooter/" />
     <meta property="og:title" content="P2P Maze Shooter — Free Browser Multiplayer Game" />
     <meta
       property="og:description"
       content="Battle a friend in real-time across 6 retro-neon maze arenas. No download, no server — just share a room code and play instantly in any browser."
     />
+    <!-- GIF first: Discord/Telegram pick this and display it animated.
+         Facebook/WhatsApp/Messenger see a GIF, reject it, then fall back to the
+         JPEG block below which meets their JPEG/PNG + dimension requirements. -->
     <meta
       property="og:image"
       content="https://arifulislamat.github.io/p2p-maze-shooter/assets/demo.gif"
     />
+    <meta
+      property="og:image:alt"
+      content="P2P Maze Shooter gameplay — two players battling in a neon maze"
+    />
+    <!-- JPEG fallback: used by WhatsApp, Messenger, Instagram, iMessage -->
+    <meta
+      property="og:image"
+      content="https://arifulislamat.github.io/p2p-maze-shooter/assets/preview.jpg"
+    />
+    <meta
+      property="og:image:secure_url"
+      content="https://arifulislamat.github.io/p2p-maze-shooter/assets/preview.jpg"
+    />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
       content="P2P Maze Shooter gameplay — two players battling in a neon maze"
@@ -48,6 +72,7 @@
       name="twitter:description"
       content="Battle a friend in real-time across 6 retro-neon maze arenas. No download, no server — just share a room code and play."
     />
+    <!-- Twitter/X renders GIF natively from og:image; listed explicitly here too -->
     <meta
       name="twitter:image"
       content="https://arifulislamat.github.io/p2p-maze-shooter/assets/demo.gif"
@@ -62,7 +87,7 @@
         "name": "P2P Maze Shooter",
         "description": "A free real-time peer-to-peer multiplayer shooter that runs entirely in the browser. Battle a friend across 6 rotating retro-neon maze arenas using WebRTC — no download, no server required.",
         "url": "https://arifulislamat.github.io/p2p-maze-shooter/",
-        "image": "https://arifulislamat.github.io/p2p-maze-shooter/assets/demo.gif",
+        "image": "https://arifulislamat.github.io/p2p-maze-shooter/assets/preview.jpg",
         "author": {
           "@type": "Person",
           "name": "Ariful Islam",
@@ -206,8 +231,12 @@
         // Auto-rejoin saved session (host/guest page reload)
         if (Game.rejoinSession()) return;
 
-        const params = new URLSearchParams(window.location.search);
-        const room = params.get("room");
+        // Hash fragment (#room=CODE) is used for sharing — Messenger/WhatsApp
+        // do not strip # from URLs, unlike ? query parameters.
+        // Also falls back to ?room= for old shared links.
+        const hashParams = new URLSearchParams(window.location.hash.slice(1));
+        const queryParams = new URLSearchParams(window.location.search);
+        const room = hashParams.get("room") || queryParams.get("room");
         if (room) {
           setTimeout(() => {
             Game.showOnlineUI("join");
