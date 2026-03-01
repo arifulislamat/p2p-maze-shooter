@@ -362,6 +362,24 @@
       </footer>
     </div>
 
+    <!-- ===== Back / Leave Button ===== -->
+    <button id="backBtn" title="Leave match" style="display:none" onclick="Game.showLeaveConfirm()">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    </button>
+
+    <!-- ===== Leave Confirmation Modal ===== -->
+    <div id="leaveModal" style="display:none">
+      <div id="leaveModalBox">
+        <p id="leaveModalMsg">Leave match?<br><span>This will end the current game.</span></p>
+        <div id="leaveModalBtns">
+          <button id="leaveCancel" onclick="Game.hideLeaveConfirm()">Cancel</button>
+          <button id="leaveConfirm" onclick="Game.confirmLeave()">Leave</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== Mute Toggle ===== -->
     <button
       id="muteBtn"
@@ -405,15 +423,6 @@
     <div id="gameContainer">
       <canvas id="gameCanvas"></canvas>
 
-      <!-- Mobile guide strip (portrait only, shown above touch controls) -->
-      <div id="mobile-guide">
-        <span>🔴 Left = <strong>Shoot</strong></span>
-        <span class="mg-sep">&middot;</span>
-        <span>🕹️ Right = <strong>Move</strong></span>
-        <span class="mg-sep">&middot;</span>
-        <span>🔄 Spin joystick = <strong>Restart</strong></span>
-      </div>
-
       <!-- Touch Controls (portrait mobile only, shown via CSS media query) -->
       <div id="touch-controls">
         <div id="shoot-zone">
@@ -425,6 +434,11 @@
           </div>
         </div>
       </div>
+
+      <!-- Author credit (portrait mobile gameplay footer) -->
+      <footer id="gameplay-author" class="author-credit">
+        Made by <a href="https://arifulislamat.com" target="_blank" rel="noopener">Ariful Islam</a>
+      </footer>
     </div>
 
     <!-- ===== Controls Help ===== -->

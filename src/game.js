@@ -780,6 +780,14 @@ const Game = (() => {
 
   // ---- Maze Rotation (cycle through all mazes) ----
   function checkMazeRotation() {
+    // Hard wall-clock guard: if total match time has elapsed (e.g. after a
+    // tab suspension that froze the rAF loop), end immediately so the game
+    // never outlasts what the HUD match timer shows.
+    const totalMatchMs = MAZE_KEYS.length * MAZE_ROTATION_MS;
+    if (Date.now() - matchStartTime >= totalMatchMs) {
+      handleMatchTimeout();
+      return;
+    }
     const elapsed = Date.now() - mazeRotationStart;
     if (elapsed >= MAZE_ROTATION_MS) {
       rotateToNextMaze();
@@ -1607,6 +1615,8 @@ const Game = (() => {
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("gameContainer").style.display = "none";
     document.getElementById("controls-help").style.display = "none";
+    document.getElementById("backBtn").style.display = "none";
+    document.getElementById("leaveModal").style.display = "none";
     document.getElementById("hostUI").style.display = "none";
     document.getElementById("joinUI").style.display = "none";
   }
@@ -2171,10 +2181,10 @@ const Game = (() => {
         ? touchControls.offsetHeight
         : 0;
 
-    const mobileGuide = document.getElementById("mobile-guide");
-    const mobileGuideHeight =
-      mobileGuide && mobileGuide.offsetParent !== null
-        ? mobileGuide.offsetHeight
+    const gameplayAuthor = document.getElementById("gameplay-author");
+    const gameplayAuthorHeight =
+      gameplayAuthor && gameplayAuthor.offsetParent !== null
+        ? gameplayAuthor.offsetHeight
         : 0;
 
     const availableWidth = Math.max(
@@ -2186,7 +2196,7 @@ const Game = (() => {
       window.innerHeight -
         controlsHeight -
         touchControlsHeight -
-        mobileGuideHeight -
+        gameplayAuthorHeight -
         GAME_CONFIG.VIEWPORT.SAFE_MARGIN * 2,
     );
 
@@ -2453,6 +2463,7 @@ const Game = (() => {
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("gameContainer").style.display = "flex";
     document.getElementById("controls-help").style.display = "block";
+    document.getElementById("backBtn").style.display = "flex";
     updateControlsHelp();
     resizeCanvas();
 
@@ -2554,5 +2565,22 @@ const Game = (() => {
     returnToLobby,
     rejoinSession,
     getState: () => ({ p1, p2, bullets, gameState, winner, gameMode }),
+    showLeaveConfirm() {
+      const isHost = gameMode === "online-host" || gameMode === "local";
+      const msg = document.getElementById("leaveModalMsg");
+      if (isHost) {
+        msg.innerHTML = 'Leave match?<br><span>This will <strong>end the game for both players</strong>.</span>';
+      } else {
+        msg.innerHTML = 'Leave match?<br><span>Are you sure you want to disconnect?</span>';
+      }
+      document.getElementById("leaveModal").style.display = "flex";
+    },
+    hideLeaveConfirm() {
+      document.getElementById("leaveModal").style.display = "none";
+    },
+    confirmLeave() {
+      document.getElementById("leaveModal").style.display = "none";
+      returnToLobby();
+    },
   };
 })();
