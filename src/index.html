@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0"
     />
 
     <!-- ===== Primary SEO ===== -->
-    <title>P2P Maze Shooter — Free Browser Multiplayer Game | WebRTC</title>
+    <title>P2P Maze Shooter — FOSS Multiplayer Game | WebRTC</title>
     <meta
       name="description"
       content="A free real-time peer-to-peer multiplayer shooter that runs entirely in your browser. Share a room code and battle a friend across 6 retro-neon maze arenas — no download, no sign-up, no server. Powered by WebRTC and vanilla JavaScript."
@@ -31,7 +31,7 @@
          URL (with hash) is used, so room-code invite links keep working. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="P2P Maze Shooter" />
-    <meta property="og:title" content="P2P Maze Shooter — Free Browser Multiplayer Game" />
+    <meta property="og:title" content="FOSS Multiplayer Game" />
     <meta
       property="og:description"
       content="Battle a friend in real-time across 6 retro-neon maze arenas. No download, no server — just share a room code and play instantly in any browser."
@@ -61,18 +61,17 @@
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="P2P Maze Shooter gameplay — two players battling in a neon maze"
+      content="P2P Maze Shooter — real-time browser multiplayer game with retro-neon maze arenas"
     />
     <meta property="og:locale" content="en_US" />
 
     <!-- ===== Twitter Card ===== -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="P2P Maze Shooter — Free Browser Multiplayer Game" />
+    <meta name="twitter:title" content="P2P Maze Shooter — FOSS Multiplayer Game" />
     <meta
       name="twitter:description"
       content="Battle a friend in real-time across 6 retro-neon maze arenas. No download, no server — just share a room code and play."
     />
-    <!-- Twitter/X renders GIF natively from og:image; listed explicitly here too -->
     <meta
       name="twitter:image"
       content="https://arifulislamat.github.io/p2p-maze-shooter/assets/demo.gif"
@@ -120,13 +119,26 @@
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔</text></svg>"
     />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <noscript>
+      <div style="text-align:center;padding:2rem;color:#e0e0f0;background:#0a0a1a;font-family:sans-serif">
+        <h1>⚔ P2P Maze Shooter</h1>
+        <p>A free real-time peer-to-peer multiplayer shooter that runs entirely in your browser.</p>
+        <p>Please <strong>enable JavaScript</strong> to play the game.</p>
+        <p><a href="https://github.com/arifulislamat/p2p-maze-shooter" style="color:#00d4ff">View source on GitHub</a></p>
+      </div>
+    </noscript>
+
     <!-- ===== Lobby Screen ===== -->
-    <div id="lobby">
-      <h1>⚔ P2P Maze Shooter</h1>
-      <p>A peer-to-peer browser battle game</p>
+    <main id="lobby">
+      <header>
+        <h1>⚔ P2P Maze Shooter</h1>
+        <p>A peer-to-peer browser battle game</p>
+      </header>
 
       <!-- Maze Selector -->
       <div id="maze-selector">
@@ -161,13 +173,13 @@
         Maps rotate randomly every minutes during gameplay
       </p>
 
-      <p class="author-credit">
+      <footer class="author-credit">
         Made by
         <a href="https://arifulislamat.com" target="_blank" rel="noopener"
           >Ariful Islam</a
         >
-      </p>
-    </div>
+      </footer>
+    </main>
 
     <!-- Maze selector builder script (runs after constants.js) -->
     <script>
