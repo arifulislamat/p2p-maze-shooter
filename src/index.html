@@ -237,6 +237,29 @@
         });
       }
       // Build after DOM + constants are ready
+      // Shared helper: read #room=CODE from the URL hash and open join UI.
+      // Returns true if a room code was found and acted on.
+      function openRoomFromHash() {
+        const hashParams = new URLSearchParams(window.location.hash.slice(1));
+        const queryParams = new URLSearchParams(window.location.search);
+        const room = hashParams.get("room") || queryParams.get("room");
+        if (!room) return false;
+        setTimeout(() => {
+          // Tear down any existing connection/game before joining new room
+          const state = Game.getState();
+          if (state.gameMode !== "lobby") {
+            Game.returnToLobby();
+          } else {
+            // May be in the connection UI (host/join panel) — cancel that too
+            Game.cancelOnline();
+          }
+          Game.showOnlineUI("join");
+          const input = document.getElementById("roomCodeInput");
+          if (input) input.value = room.toUpperCase().trim();
+        }, 0);
+        return true;
+      }
+
       window.addEventListener("DOMContentLoaded", () => {
         setTimeout(buildMazeSelector, 0);
 
@@ -246,16 +269,13 @@
         // Hash fragment (#room=CODE) is used for sharing — Messenger/WhatsApp
         // do not strip # from URLs, unlike ? query parameters.
         // Also falls back to ?room= for old shared links.
-        const hashParams = new URLSearchParams(window.location.hash.slice(1));
-        const queryParams = new URLSearchParams(window.location.search);
-        const room = hashParams.get("room") || queryParams.get("room");
-        if (room) {
-          setTimeout(() => {
-            Game.showOnlineUI("join");
-            const input = document.getElementById("roomCodeInput");
-            if (input) input.value = room.toUpperCase().trim();
-          }, 0);
-        }
+        openRoomFromHash();
+      });
+
+      // When the user pastes a new invite link in the same tab, only the hash
+      // changes — the browser won't reload. Listen for that and open the new room.
+      window.addEventListener("hashchange", () => {
+        openRoomFromHash();
       });
     </script>
 
@@ -320,6 +340,13 @@
         </div>
         <p id="joinStatus"></p>
       </div>
+
+      <footer class="author-credit">
+        Made by
+        <a href="https://arifulislamat.com" target="_blank" rel="noopener"
+          >Ariful Islam</a
+        >
+      </footer>
     </div>
 
     <!-- ===== Mute Toggle ===== -->

@@ -786,12 +786,20 @@ const Game = (() => {
     }
   }
 
-  function shuffleMazeOrder() {
+  function shuffleMazeOrder(firstMazeKey) {
     const keys = [...MAZE_KEYS];
     // Fisher-Yates shuffle
     for (let i = keys.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [keys[i], keys[j]] = [keys[j], keys[i]];
+    }
+    // If a preferred starting maze is given, move it to the front
+    if (firstMazeKey && keys.includes(firstMazeKey)) {
+      const idx = keys.indexOf(firstMazeKey);
+      if (idx > 0) {
+        keys.splice(idx, 1);
+        keys.unshift(firstMazeKey);
+      }
     }
     return keys;
   }
@@ -910,6 +918,13 @@ const Game = (() => {
 
   // ---- Game Restart ----
   function restartGame() {
+    // Set up maze BEFORE creating players so spawns use the correct maze
+    mazeOrder = shuffleMazeOrder(selectedMazeKey);
+    mazesPlayed = 0;
+    selectedMazeKey = mazeOrder[0];
+    activeMaze = parseMaze(selectedMazeKey);
+    Renderer.invalidateMazeCache();
+
     p1 = createPlayer(1);
     p2 = createPlayer(2);
     bullets = [];
@@ -927,17 +942,25 @@ const Game = (() => {
     lastUrgencySecond = -1;
     winner = null;
     isDraw = false;
-    mazeOrder = shuffleMazeOrder();
-    mazesPlayed = 0;
-    selectedMazeKey = mazeOrder[0];
-    activeMaze = parseMaze(selectedMazeKey);
-    Renderer.invalidateMazeCache();
     lastBombSpawn = Date.now();
     nextBombSpawnDelay = 500 + Math.random() * 800; // first bomb in 0.5–1.3 s
     mazeRotationStart = Date.now();
     matchStartTime = Date.now();
     lastResync = Date.now();
     startCountdown();
+
+    // In online host mode, immediately sync the guest with new match state
+    if (gameMode === "online-host") {
+      Network.sendReliable({
+        type: "resync",
+        mazeKey: selectedMazeKey,
+        mazeOrder: mazeOrder,
+        mazesPlayed: mazesPlayed,
+        matchStartTime: matchStartTime,
+        mazeRotationStart: mazeRotationStart,
+      });
+      broadcastState(true);
+    }
   }
 
   // ======================================================
@@ -1559,6 +1582,7 @@ const Game = (() => {
 
   function returnToLobby() {
     clearSession();
+    pendingResumeState = null;
     stopReconnecting();
     Network.disconnect();
     gameMode = "lobby";
@@ -1778,6 +1802,10 @@ const Game = (() => {
   }
 
   function showOnlineUI(mode) {
+    // Clear stale session/resume state when opening a fresh online UI
+    clearSession();
+    pendingResumeState = null;
+
     document.getElementById("lobby").style.display = "none";
     document.getElementById("connectionUI").style.display = "block";
 
@@ -1841,6 +1869,7 @@ const Game = (() => {
 
   function cancelOnline() {
     clearSession();
+    pendingResumeState = null;
     Network.disconnect();
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("hostUI").style.display = "none";
@@ -2406,7 +2435,7 @@ const Game = (() => {
 
     // Only host shuffles maze order; guest receives it via config message
     if (isHost) {
-      mazeOrder = resume && resume.mazeOrder ? resume.mazeOrder : shuffleMazeOrder();
+      mazeOrder = resume && resume.mazeOrder ? resume.mazeOrder : shuffleMazeOrder(selectedMazeKey);
     }
     mazesPlayed = resume ? (resume.mazesPlayed ?? 0) : 0;
     selectedMazeKey = resume && resume.selectedMazeKey ? resume.selectedMazeKey : mazeOrder[0];
