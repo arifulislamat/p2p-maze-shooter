@@ -61,6 +61,7 @@ const Game = (() => {
   let displayMatchTimeLeft = null;
   let initialized = false;
   let lastResync = 0;
+  let bgPhysicsInterval = null; // setInterval id for host physics when tab is hidden
   let lobbyRetryCount = 0;
   const LOBBY_MAX_RETRIES = 5;
   let lastDataReceived = 0;
@@ -780,6 +781,14 @@ const Game = (() => {
 
   // ---- Maze Rotation (cycle through all mazes) ----
   function checkMazeRotation() {
+    // Hard wall-clock guard: if total match time has elapsed (e.g. after a
+    // tab suspension that froze the rAF loop), end immediately so the game
+    // never outlasts what the HUD match timer shows.
+    const totalMatchMs = MAZE_KEYS.length * MAZE_ROTATION_MS;
+    if (Date.now() - matchStartTime >= totalMatchMs) {
+      handleMatchTimeout();
+      return;
+    }
     const elapsed = Date.now() - mazeRotationStart;
     if (elapsed >= MAZE_ROTATION_MS) {
       rotateToNextMaze();
@@ -1532,8 +1541,56 @@ const Game = (() => {
   }
 
   // ---- Page visibility: proactively reconnect on foreground ----
+  // ---- Host physics tick (extracted so setInterval can call it when tab is hidden) ----
+  // When the host tab is in background, browsers throttle rAF to ~1 fps.
+  // Running physics via setInterval keeps guest's P2 movement smooth.
+  function runHostPhysicsTick() {
+    if (gameMode !== "online-host") return;
+    savePhysicsPositions();
+    if (gameState === STATE.COUNTDOWN) updateCountdown();
+    if (gameState === STATE.PLAYING) {
+      processPlayerInput(
+        p1,
+        GAME_CONFIG.INPUT.MOVE_UP,
+        GAME_CONFIG.INPUT.MOVE_DOWN,
+        GAME_CONFIG.INPUT.MOVE_LEFT,
+        GAME_CONFIG.INPUT.MOVE_RIGHT,
+        GAME_CONFIG.INPUT.SHOOT,
+      );
+      processRemoteInput(p2);
+      updateBullets();
+      updateBombs(PHYSICS_STEP_MS);
+      updateZombies(PHYSICS_STEP_MS);
+      updateHealthPacks(PHYSICS_STEP_MS);
+      updateSpeedBoostPickups(PHYSICS_STEP_MS);
+      updateWeaponPickups(PHYSICS_STEP_MS);
+      updateRespawns(PHYSICS_STEP_MS);
+      checkMazeRotation();
+    }
+    sendHostInput();
+    const now = Date.now();
+    const fullSync = now - lastResync >= GAME_CONFIG.NETWORK.RESYNC_INTERVAL_MS;
+    if (fullSync || now - lastCorrection >= CORRECTION_INTERVAL_MS) {
+      sendCorrections();
+      lastCorrection = now;
+      if (fullSync) lastResync = now;
+    }
+  }
+
   function handleVisibilityChange() {
-    if (document.visibilityState !== "visible") return;
+    if (document.visibilityState === "hidden") {
+      // Host tab going to background: keep physics alive via setInterval so the
+      // guest doesn't see a frozen P2. rAF in background is throttled to ~1fps.
+      if (gameMode === "online-host" && !bgPhysicsInterval) {
+        bgPhysicsInterval = setInterval(runHostPhysicsTick, PHYSICS_STEP_MS);
+      }
+      return;
+    }
+    // Tab became visible — stop background interval, rAF loop takes back over.
+    if (bgPhysicsInterval) {
+      clearInterval(bgPhysicsInterval);
+      bgPhysicsInterval = null;
+    }
 
     // Mid-game reconnection
     if (gameMode === "online-host" || gameMode === "online-guest") {
@@ -1581,6 +1638,7 @@ const Game = (() => {
   }
 
   function returnToLobby() {
+    if (bgPhysicsInterval) { clearInterval(bgPhysicsInterval); bgPhysicsInterval = null; }
     clearSession();
     pendingResumeState = null;
     stopReconnecting();
@@ -1607,6 +1665,8 @@ const Game = (() => {
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("gameContainer").style.display = "none";
     document.getElementById("controls-help").style.display = "none";
+    document.getElementById("backBtn").style.display = "none";
+    document.getElementById("leaveModal").style.display = "none";
     document.getElementById("hostUI").style.display = "none";
     document.getElementById("joinUI").style.display = "none";
   }
@@ -1945,8 +2005,9 @@ const Game = (() => {
         p2.y = hostP2State.y;
         p2.dir = hostP2State.dir;
       }
-    } else if (runPhysics) {
+    } else if (runPhysics && !document.hidden) {
       // Host / local: run all physics at fixed 60 Hz
+      // (When hidden, bgPhysicsInterval->runHostPhysicsTick handles host physics)
       if (gameState === STATE.COUNTDOWN) {
         updateCountdown();
       }
@@ -2138,6 +2199,11 @@ const Game = (() => {
     // Input listeners
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    // Clear all held keys when the tab loses focus so keys don't get "stuck"
+    // (e.g. held key in tab1, switch to tab2 → keyup never fires in tab1).
+    window.addEventListener("blur", () => {
+      Object.keys(keys).forEach((k) => { keys[k] = false; });
+    });
     window.addEventListener("resize", resizeCanvas);
 
     // Tap-to-restart on canvas (mobile — no "R" key)
@@ -2171,10 +2237,10 @@ const Game = (() => {
         ? touchControls.offsetHeight
         : 0;
 
-    const mobileGuide = document.getElementById("mobile-guide");
-    const mobileGuideHeight =
-      mobileGuide && mobileGuide.offsetParent !== null
-        ? mobileGuide.offsetHeight
+    const gameplayAuthor = document.getElementById("gameplay-author");
+    const gameplayAuthorHeight =
+      gameplayAuthor && gameplayAuthor.offsetParent !== null
+        ? gameplayAuthor.offsetHeight
         : 0;
 
     const availableWidth = Math.max(
@@ -2186,7 +2252,7 @@ const Game = (() => {
       window.innerHeight -
         controlsHeight -
         touchControlsHeight -
-        mobileGuideHeight -
+        gameplayAuthorHeight -
         GAME_CONFIG.VIEWPORT.SAFE_MARGIN * 2,
     );
 
@@ -2222,27 +2288,16 @@ const Game = (() => {
     const KNOB_LIMIT = BASE_RADIUS - 28; // max knob travel from center
 
     // ---- Shoot button ----
-    shootBtn.addEventListener(
-      "touchstart",
-      (e) => {
-        e.preventDefault();
-        keys["Space"] = true;
-      },
-      { passive: false },
-    );
-
-    shootBtn.addEventListener(
-      "touchend",
-      (e) => {
-        e.preventDefault();
-        keys["Space"] = false;
-      },
-      { passive: false },
-    );
-
-    shootBtn.addEventListener("touchcancel", () => {
+    // Pointer events unify touch + mouse (works in DevTools device emulation).
+    shootBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      keys["Space"] = true;
+    }, { passive: false });
+    shootBtn.addEventListener("pointerup", (e) => {
+      e.preventDefault();
       keys["Space"] = false;
-    });
+    }, { passive: false });
+    shootBtn.addEventListener("pointercancel", () => { keys["Space"] = false; });
 
     // ---- Joystick ----
     let joystickTouchId = null;
@@ -2330,53 +2385,40 @@ const Game = (() => {
     }
 
     joystickZone.addEventListener(
-      "touchstart",
+      "pointerdown",
       (e) => {
         e.preventDefault();
-        if (joystickTouchId !== null) return; // already tracking
-        const touch = e.changedTouches[0];
-        joystickTouchId = touch.identifier;
+        if (joystickTouchId !== null) return;
+        joystickZone.setPointerCapture(e.pointerId);
+        joystickTouchId = e.pointerId;
         const c = getBaseCenter();
         baseCX = c.cx;
         baseCY = c.cy;
-        spinVisited.clear(); // reset spin tracker on new touch
-        applyJoystickVector(touch.clientX - baseCX, touch.clientY - baseCY);
+        spinVisited.clear();
+        applyJoystickVector(e.clientX - baseCX, e.clientY - baseCY);
       },
       { passive: false },
     );
 
     joystickZone.addEventListener(
-      "touchmove",
+      "pointermove",
       (e) => {
         e.preventDefault();
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          const touch = e.changedTouches[i];
-          if (touch.identifier === joystickTouchId) {
-            applyJoystickVector(touch.clientX - baseCX, touch.clientY - baseCY);
-            break;
-          }
-        }
+        if (e.pointerId !== joystickTouchId) return;
+        applyJoystickVector(e.clientX - baseCX, e.clientY - baseCY);
       },
       { passive: false },
     );
 
     function onJoystickEnd(e) {
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === joystickTouchId) {
-          joystickTouchId = null;
-          clearDirectionKeys();
-          joystickKnob.style.transform = "translate(0px, 0px)";
-          break;
-        }
-      }
+      if (e.pointerId !== joystickTouchId) return;
+      joystickTouchId = null;
+      clearDirectionKeys();
+      joystickKnob.style.transform = "translate(0px, 0px)";
     }
 
-    joystickZone.addEventListener("touchend", onJoystickEnd, {
-      passive: false,
-    });
-    joystickZone.addEventListener("touchcancel", onJoystickEnd, {
-      passive: false,
-    });
+    joystickZone.addEventListener("pointerup", onJoystickEnd, { passive: false });
+    joystickZone.addEventListener("pointercancel", onJoystickEnd, { passive: false });
   }
 
   // ---- Select maze from lobby ----
@@ -2453,7 +2495,13 @@ const Game = (() => {
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("gameContainer").style.display = "flex";
     document.getElementById("controls-help").style.display = "block";
+    document.getElementById("backBtn").style.display = "flex";
     updateControlsHelp();
+    // Release keyboard focus from any UI element (e.g. roomCodeInput in the
+    // guest tab) so key events reach the game immediately.
+    if (document.activeElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
     resizeCanvas();
 
     // Create players
@@ -2554,5 +2602,22 @@ const Game = (() => {
     returnToLobby,
     rejoinSession,
     getState: () => ({ p1, p2, bullets, gameState, winner, gameMode }),
+    showLeaveConfirm() {
+      const isHost = gameMode === "online-host" || gameMode === "local";
+      const msg = document.getElementById("leaveModalMsg");
+      if (isHost) {
+        msg.innerHTML = 'Leave match?<br><span>This will <strong>end the game for both players</strong>.</span>';
+      } else {
+        msg.innerHTML = 'Leave match?<br><span>Are you sure you want to disconnect?</span>';
+      }
+      document.getElementById("leaveModal").style.display = "flex";
+    },
+    hideLeaveConfirm() {
+      document.getElementById("leaveModal").style.display = "none";
+    },
+    confirmLeave() {
+      document.getElementById("leaveModal").style.display = "none";
+      returnToLobby();
+    },
   };
 })();

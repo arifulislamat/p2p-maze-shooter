@@ -396,6 +396,11 @@ canvas {
   text-decoration: underline;
 }
 
+/* Hidden on desktop; shown inside portrait mobile media query */
+#gameplay-author {
+  display: none;
+}
+
 /* ---- Controls Help ---- */
 #controls-help {
   margin-top: 1rem;
@@ -417,6 +422,118 @@ canvas {
   padding: 1px 6px;
   font-size: 0.7rem;
   color: #ccc;
+}
+
+/* ---- Back Button (top-left, mirrors mute button) ---- */
+#backBtn {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1000;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dark);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 1.4rem;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, background 0.2s;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 0;
+  line-height: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+#backBtn:hover {
+  border-color: var(--status-error);
+  background: var(--bg-elevated);
+}
+
+/* ---- Leave Confirmation Modal ---- */
+#leaveModal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#leaveModalBox {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dark);
+  border-radius: 8px;
+  padding: 1.6rem 2rem 1.4rem;
+  text-align: center;
+  max-width: 320px;
+  width: 90%;
+  box-shadow: 0 0 32px rgba(0,0,0,0.6);
+}
+
+#leaveModalMsg {
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin-bottom: 1.2rem;
+  line-height: 1.5;
+}
+
+#leaveModalMsg span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+#leaveModalBtns {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+#leaveCancel {
+  padding: 0.5rem 1.4rem;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.85rem;
+  font-weight: bold;
+  border: 1px solid var(--border-dark);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+#leaveCancel:hover {
+  border-color: var(--text-muted);
+  background: #222240;
+}
+
+#leaveConfirm {
+  padding: 0.5rem 1.4rem;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.85rem;
+  font-weight: bold;
+  border: 1px solid var(--status-error);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--status-error);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+
+#leaveConfirm:hover {
+  background: var(--status-error);
+  color: #fff;
 }
 
 /* ---- Mute Toggle Button ---- */
@@ -452,43 +569,26 @@ canvas {
   display: none; /* hidden by default; shown by portrait media query */
 }
 
-/* Mobile guide strip — hidden by default, shown only in portrait media query */
-#mobile-guide {
-  display: none;
-}
-
 @media (orientation: portrait) and (max-width: 1024px) {
   /* Keyboard hints not relevant on touch devices */
   #controls-help {
     display: none !important;
   }
 
-  /* Mobile guide strip */
-  #mobile-guide {
+  /* Lobby fills full viewport height so the author footer can sit at the bottom */
+  #lobby {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 0.3rem 0.5rem;
+    min-height: 100svh;
+    padding: 1.2rem 1rem 0.75rem;
     width: 100%;
-    padding: 4px 8px 3px;
-    font-size: 0.68rem;
-    color: rgba(255, 255, 255, 0.5);
-    letter-spacing: 0.02em;
-    background: transparent;
-    pointer-events: none;
-    user-select: none;
   }
 
-  #mobile-guide strong {
-    color: rgba(255, 255, 255, 0.8);
-    font-weight: 600;
-  }
-
-  .mg-sep {
-    color: rgba(255, 255, 255, 0.25);
-    font-size: 0.6rem;
+  .author-credit {
+    margin-top: auto;
+    padding-top: 1rem;
+    padding-bottom: 0.5rem;
   }
 
   /* ---- Lobby: maze selector becomes a horizontal scroll-snap carousel ---- */
@@ -532,6 +632,26 @@ canvas {
     flex-direction: column;
     align-items: center;
     padding: 0.25rem 0 0;
+  }
+
+  /* Author credit shown at the bottom during gameplay */
+  #gameplay-author {
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 3px 0 4px;
+    margin-top: 0;
+    font-size: 0.62rem;
+    color: rgba(255, 255, 255, 0.28);
+    pointer-events: none;
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  #gameplay-author a {
+    color: rgba(0, 212, 255, 0.45);
+    text-decoration: none;
+    pointer-events: auto;
   }
 
   /* Touch controls bar fills full width below canvas */
