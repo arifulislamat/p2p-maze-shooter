@@ -3,6 +3,7 @@
 // ===========================================
 
 const Renderer = (() => {
+  // Visual layout constants — tweak these if you change fonts or layout
   const RENDER_CONFIG = {
     HUD: {
       HEIGHT: 55,
@@ -11,23 +12,23 @@ const Renderer = (() => {
       HEALTH_HEIGHT: 8,
     },
     FONTS: {
-      HUD: "bold 16px Courier New",
-      HUD_SMALL: "10px Courier New",
-      LABEL: "bold 12px Courier New",
-      COUNTDOWN: "bold 120px Courier New",
-      RESPAWN: "bold 20px Courier New",
-      GAME_OVER: "bold 60px Courier New",
+      HUD:           "bold 16px Courier New",
+      HUD_SMALL:     "10px Courier New",
+      LABEL:         "bold 12px Courier New",
+      COUNTDOWN:     "bold 120px Courier New",
+      RESPAWN:       "bold 20px Courier New",
+      GAME_OVER:     "bold 60px Courier New",
       GAME_OVER_SUB: "16px Courier New",
-      DISCONNECT: "bold 36px Courier New",
-      DISCONNECT_SUB: "16px Courier New",
-      ANNOUNCE: "bold 36px Courier New",
-      ANNOUNCE_SUB: "14px Courier New",
+      DISCONNECT:    "bold 36px Courier New",
+      DISCONNECT_SUB:"16px Courier New",
+      ANNOUNCE:      "bold 36px Courier New",
+      ANNOUNCE_SUB:  "14px Courier New",
     },
     EFFECTS: {
       CORNER_ACCENT_LEN: 16,
-      SCANLINE_STEP: 3,
-      SCANLINE_ALPHA: 0.04,
-      MAZE_ANNOUNCE_MS: 2500,
+      SCANLINE_STEP:     3,
+      SCANLINE_ALPHA:    0.04,
+      MAZE_ANNOUNCE_MS:  2500,
       DAMAGE_FLASH_ALPHA: 0.35,
       LOW_HEALTH_PULSE_ALPHA: 0.28,
     },
@@ -55,12 +56,12 @@ const Renderer = (() => {
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
-  // ---- Draw Grid Maze (retro style matching maze.jsx) ----
-  // Render maze to a given 2D context (used for both live and cache)
+  // Draw the maze to a given 2D context (used for both the live canvas and the
+  // off-screen cache so we only re-render when the maze actually changes)
   function drawMazeToContext(target) {
     const grid = activeMaze.grid;
 
-    // Pass 1: Draw all cell backgrounds + grid lines on every cell
+    // Each cell: background fill + grid lines
     for (let r = 0; r < MAZE_ROWS; r++) {
       for (let c = 0; c < MAZE_COLS; c++) {
         const cell = grid[r][c];
@@ -68,49 +69,35 @@ const Renderer = (() => {
         const y = r * CELL_H;
 
         if (cell === CELL_WALL) {
-          // Wall tile — retro depth effect
+          // Retro depth effect on wall tiles
           target.fillStyle = "#2d2d4a";
           target.fillRect(x, y, CELL_W, CELL_H);
 
-          // Outer border (bright edge)
           target.strokeStyle = "#4a4a6a";
           target.lineWidth = 1;
           target.strokeRect(x + 0.5, y + 0.5, CELL_W - 1, CELL_H - 1);
 
-          // Inner border detail (subtle inner rectangle for depth)
+          // Inner rectangle for a subtle inset look
           target.strokeStyle = "rgba(100, 100, 180, 0.2)";
           target.lineWidth = 1;
           target.strokeRect(x + 3, y + 3, CELL_W - 6, CELL_H - 6);
 
-          // Inset shadow simulation — darker edges on bottom-right
+          // Bottom-right shadow
           target.fillStyle = "rgba(0, 0, 0, 0.15)";
-          target.fillRect(x + CELL_W - 3, y + 1, 3, CELL_H - 1); // right shadow
-          target.fillRect(x + 1, y + CELL_H - 3, CELL_W - 1, 3); // bottom shadow
+          target.fillRect(x + CELL_W - 3, y + 1, 3, CELL_H - 1);
+          target.fillRect(x + 1, y + CELL_H - 3, CELL_W - 1, 3);
 
-          // Inset highlight — lighter edge on top-left
+          // Top-left highlight
           target.fillStyle = "rgba(100, 100, 160, 0.15)";
-          target.fillRect(x + 1, y + 1, 3, CELL_H - 2); // left highlight
-          target.fillRect(x + 1, y + 1, CELL_W - 2, 3); // top highlight
-        } else if (cell === CELL_P1 || cell === CELL_P2) {
-          // Spawn zones — render as plain path (no visual indicator)
-          target.fillStyle = COLORS.background;
-          target.fillRect(x, y, CELL_W, CELL_H);
-        } else if (cell === CELL_ZOMBIE) {
-          // Zombie cells render as plain path (dynamic zombies drawn separately)
-          target.fillStyle = COLORS.background;
-          target.fillRect(x, y, CELL_W, CELL_H);
-        } else if (cell === CELL_BOMB) {
-          // Bomb cells now render as plain path (dynamic bombs drawn separately)
-          target.fillStyle = COLORS.background;
-          target.fillRect(x, y, CELL_W, CELL_H);
+          target.fillRect(x + 1, y + 1, 3, CELL_H - 2);
+          target.fillRect(x + 1, y + 1, CELL_W - 2, 3);
         } else {
-          // Path cell — dark background (already drawn by drawArena)
-          // Still draw cell-specific bg so grid lines show properly
+          // Spawn, zombie, bomb and normal path cells all render as plain floor
           target.fillStyle = COLORS.background;
           target.fillRect(x, y, CELL_W, CELL_H);
         }
 
-        // Grid lines on EVERY cell (the subtle grid overlay)
+        // Subtle grid overlay on every cell
         target.strokeStyle = "#1a1a2e";
         target.lineWidth = 1;
         target.strokeRect(x + 0.5, y + 0.5, CELL_W - 1, CELL_H - 1);
@@ -156,7 +143,7 @@ const Renderer = (() => {
     target.globalAlpha = 1;
   }
 
-  // ---- CRT Scanline Pattern (pre-rendered, reused via pattern fill) ----
+  // The scanline pattern is created once at startup and reused as a fill pattern
   const scanlinePattern = (() => {
     const c = document.createElement("canvas");
     c.width = 1;
@@ -172,9 +159,8 @@ const Renderer = (() => {
     target.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
-  // ---- Player ----
   function drawPlayer(player, label) {
-    if (!player.alive) return; // don't draw dead players
+    if (!player.alive) return;
 
     const color = player.id === 1 ? COLORS.p1 : COLORS.p2;
     const darkColor = player.id === 1 ? COLORS.p1Dark : COLORS.p2Dark;
@@ -197,16 +183,15 @@ const Renderer = (() => {
     ctx.translate(cx, cy);
     ctx.rotate(angle);
 
-    // Player glow effect
     ctx.shadowColor = color;
     ctx.shadowBlur = 10;
 
-    // Player body — triangle pointing right (tip at front, flat base at back)
+    // Triangle body: tip at front, flat base at back
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(half + 2, 0); // Tip (front)
-    ctx.lineTo(-half, -half); // Top-left (back)
-    ctx.lineTo(-half, half); // Bottom-left (back)
+    ctx.moveTo(half + 2, 0);     // tip (front)
+    ctx.lineTo(-half, -half);    // back-top
+    ctx.lineTo(-half,  half);    // back-bottom
     ctx.closePath();
     ctx.fill();
 
@@ -219,7 +204,7 @@ const Renderer = (() => {
 
     ctx.restore();
 
-    // Player label above (neon glow)
+    // Label above player
     ctx.shadowColor = color;
     ctx.shadowBlur = 6;
     ctx.fillStyle = color;
@@ -228,20 +213,10 @@ const Renderer = (() => {
     ctx.fillText(label, cx, player.y - 18);
     ctx.shadowBlur = 0;
 
-    // Health bar above player
-    drawHealthBar(
-      player.x,
-      player.y - 12,
-      PLAYER_SIZE,
-      6,
-      player.health,
-      PLAYER_HEALTH,
-    );
+    drawHealthBar(player.x, player.y - 12, PLAYER_SIZE, 6, player.health, PLAYER_HEALTH);
   }
 
-  // Direction indicator removed — triangle body itself shows facing direction
-
-  // ---- Health Bar ----
+  // Health bar — green when above 30%, red when critically low
   function drawHealthBar(x, y, width, height, current, max) {
     const ratio = Math.max(0, current / max);
 
@@ -795,21 +770,21 @@ const Renderer = (() => {
     ctx.restore();
   }
 
-  // ---- Damage Flash (thin edge strips on the screen of the hit player only) ----
   function drawDamageFlash(localPlayer, rgb) {
     if (!localPlayer || !localPlayer.damageFlashTimer || localPlayer.damageFlashTimer <= 0) return;
     const t = localPlayer.damageFlashTimer / DAMAGE_FLASH_MS; // 1→0
     const alpha = (t * 0.55).toFixed(3);
-    const edgeW = Math.floor(CANVAS_WIDTH * 0.055);
+    const edgeW = Math.floor(CANVAS_WIDTH  * 0.055);
     const edgeH = Math.floor(CANVAS_HEIGHT * 0.065);
+    // Only paint the screen edges, not the whole canvas, to keep it subtle
     ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, edgeH);                        // top
-    ctx.fillRect(0, CANVAS_HEIGHT - edgeH, CANVAS_WIDTH, edgeH);   // bottom
-    ctx.fillRect(0, 0, edgeW, CANVAS_HEIGHT);                       // left
-    ctx.fillRect(CANVAS_WIDTH - edgeW, 0, edgeW, CANVAS_HEIGHT);   // right
+    ctx.fillRect(0, 0,                    CANVAS_WIDTH, edgeH);
+    ctx.fillRect(0, CANVAS_HEIGHT - edgeH, CANVAS_WIDTH, edgeH);
+    ctx.fillRect(0, 0,                     edgeW, CANVAS_HEIGHT);
+    ctx.fillRect(CANVAS_WIDTH - edgeW, 0,  edgeW, CANVAS_HEIGHT);
   }
 
-  // ---- Low-Health Vignette (flat edge fade — no gradient for perf) ----
+  // Pulsing colored vignette on the screen edges when HP is critical
   function drawLowHealthVignette(p1, p2) {
     const configs = [
       { p: p1, rgb: "0,180,255" },

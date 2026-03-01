@@ -3,23 +3,24 @@
 // ===========================================
 
 const Network = (() => {
+  // Networking constants — adjust these if you need different room code format
+  // or want to point at different STUN servers
   const NETWORK_CONFIG = {
     ROOM_CODE_LENGTH: 6,
-    ROOM_CODE_CHARS: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+    ROOM_CODE_CHARS: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", // no confusable chars
     PEER_PREFIX: "p2p-shooter-",
-    // Debug level: 2 (warnings) locally, 0 (silent) in production
+    // Verbose logging locally, silent in production
     PEER_DEBUG: typeof location !== "undefined" && location.hostname === "localhost" ? 2 : 0,
     ICE_SERVERS: [
-      // Google STUN (5 known-good servers)
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:3478" },
       { urls: "stun:stun2.l.google.com:19302" },
       { urls: "stun:stun3.l.google.com:3478" },
       { urls: "stun:stun4.l.google.com:19302" },
     ],
-    OPEN_POLL_INTERVAL_MS: 100,
-    OPEN_POLL_LOG_EVERY: 10,
-    OPEN_POLL_MAX_ATTEMPTS: 150,
+    OPEN_POLL_INTERVAL_MS:  100,
+    OPEN_POLL_LOG_EVERY:     10,  // log once per second (10 × 100 ms)
+    OPEN_POLL_MAX_ATTEMPTS: 150,  // give up after ~15 s
   };
 
   let peer = null;
@@ -29,14 +30,14 @@ const Network = (() => {
   let openPollTimer = null;
   let connected = false;
   let lastRoomCode = null;
-  // Tracks peers that we intentionally destroyed so their async 'close' event
-  // doesn't incorrectly fire onPeerClosed into reconnect callbacks.
+  // Peers we explicitly .destroy() — keeps their async 'close' from firing onPeerClosed
   const intentionallyDestroyedPeers = new Set();
 
-  // ---- Reliable-over-unreliable: deduplicate retransmitted critical messages ----
+  // Reliable-over-unreliable messaging: add a unique _rid and send 3×;
+  // receiver deduplicates via the ring buffer below
   let reliableMsgSeq = 0;
   const seenRids = new Set();
-  const ridHistory = []; // ring-buffer to prune seenRids (cap at 128)
+  const ridHistory = []; // capped at 128 entries to bound memory
 
   // Generate a room code (no confusable chars)
   function generateRoomCode() {
@@ -57,7 +58,9 @@ const Network = (() => {
     },
   };
 
-  // ---- Attach signaling-level lifecycle handlers to a peer ----
+  // Attach signaling-level lifecycle handlers to a Peer object.
+  // All callbacks reference the module-level `callbacks` object so they
+  // stay current even after restoreHost/restoreGuest updates it.
   function attachPeerLifecycleHandlers(peerObj) {
     peerObj.on("disconnected", () => {
       console.log("[Net] Signaling WS disconnected — auto-reconnecting...");
@@ -79,7 +82,7 @@ const Network = (() => {
     });
   }
 
-  // ---- Host: create a room with an existing code (Phase 2 of deferred creation) ----
+  // Create a host peer with an explicit room code (called on fresh create or reload-resume)
   function createHostWithCode(roomCode, cbs) {
     isHost = true;
     connected = false;
@@ -114,12 +117,11 @@ const Network = (() => {
     attachPeerLifecycleHandlers(peer);
   }
 
-  // ---- Set last room code (for deferred room creation) ----
   function setLastRoomCode(code) {
     lastRoomCode = code;
   }
 
-  // ---- Host: create a room and wait for guest ----
+  // Create a host peer with an auto-generated room code
   function createHost(cbs) {
     isHost = true;
     connected = false;
@@ -156,7 +158,7 @@ const Network = (() => {
     attachPeerLifecycleHandlers(peer);
   }
 
-  // ---- Guest: join an existing room ----
+  // Join an existing room as a guest
   function joinGame(roomCode, cbs) {
     isHost = false;
     connected = false;
@@ -191,9 +193,9 @@ const Network = (() => {
     attachPeerLifecycleHandlers(peer);
   }
 
-  // ---- Host: restore a room with the same room code (after backgrounding) ----
-  // Reuses the existing Peer when possible to avoid unavailable-id errors
-  // from the PeerJS server (which holds stale IDs for ~60 s).
+  // Re-register the same room after backgrounding.
+  // Reuses the existing Peer when possible to avoid 'unavailable-id' errors
+  // (PeerJS server holds stale IDs for ~60 s after a TCP drop).
   function restoreHost(roomCode, cbs) {
     clearPollTimer();
     // Close old DataConnection so its stale events don't trigger new callbacks
@@ -257,9 +259,8 @@ const Network = (() => {
     attachPeerLifecycleHandlers(peer);
   }
 
-  // ---- Guest: restore connection to a host (after backgrounding) ----
-  // Reuses the existing Peer when possible so we don't create a new
-  // signaling WebSocket (and random UUID) on every retry attempt.
+  // Reconnect to the host after backgrounding.
+  // Reuses the existing Peer to avoid creating redundant signaling connections.
   function restoreGuest(roomCode, cbs) {
     clearPollTimer();
     // Close old DataConnection so its stale events don't trigger new callbacks
@@ -317,7 +318,7 @@ const Network = (() => {
     attachPeerLifecycleHandlers(peer);
   }
 
-  // ---- Mark as connected (deduplicated) ----
+  // Mark the data channel as connected (guards against double-fire)
   function markConnected() {
     if (connected) return;
     connected = true;
@@ -332,8 +333,8 @@ const Network = (() => {
     if (callbacks.onConnected) callbacks.onConnected();
   }
 
-  // ---- Poll for conn.open as fallback ----
-  // connRef is the specific connection instance this poll belongs to.
+  // Poll for conn.open as a fallback for environments where the 'open' event
+  // doesn't always fire reliably. Stops itself once the connection opens or fails.
   function startOpenPoll(connRef) {
     clearPollTimer();
     let attempts = 0;
@@ -415,10 +416,9 @@ const Network = (() => {
     }
   }
 
-  // ---- Set up connection event handlers ----
-  // connRef is the specific DataConnection instance to wire up. Using an explicit
-  // parameter avoids reading stale module-level `conn` if the reference is
-  // replaced (e.g. during rapid reconnects) before the deferred call fires.
+  // Wire connection event handlers.
+  // Takes an explicit connRef instead of reading the module-level `conn` to
+  // prevent stale-reference bugs when the connection is replaced mid-flight.
   function setupConnection(connRef) {
     console.log("[Net] Setting up connection, conn.open:", connRef.open);
 
@@ -463,8 +463,8 @@ const Network = (() => {
         callbacks.onError(err.message || "Connection error");
     });
 
-    // Also monitor the underlying DataChannel directly if available.
-    // On the guest side _dc may not exist yet at this point; the poll covers that.
+      // Also listen directly on the underlying DataChannel — on the guest
+      // side _dc may not exist yet at this point, so the poll above covers it
     if (connRef._dc) {
       console.log("[Net] _dc exists at setup, state:", connRef._dc.readyState);
       connRef._dc.addEventListener("open", () => {
@@ -502,7 +502,7 @@ const Network = (() => {
     startOpenPoll(connRef);
   }
 
-  // ---- Send data to peer ----
+  // Send data to the peer. Silently drops if the channel isn't open yet.
   function send(data) {
     if (conn && conn.open) {
       conn.send(data);
@@ -511,7 +511,6 @@ const Network = (() => {
     }
   }
 
-  // ---- Clean up ----
   function disconnect() {
     clearPollTimer();
     connected = false;
@@ -541,8 +540,8 @@ const Network = (() => {
     return lastRoomCode;
   }
 
-  // ---- Send a critical message reliably over the unreliable channel ----
-  // Stamps a unique _rid and transmits up to 3 times; receiver deduplicates.
+  // Send a critical message reliably over the unreliable channel.
+  // Stamps a unique _rid and sends up to 3 times; receiver deduplicates by _rid.
   function sendReliable(data) {
     const rid = (++reliableMsgSeq) + "-" + Date.now();
     const payload = Object.assign({}, data, { _rid: rid });

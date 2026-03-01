@@ -3,6 +3,77 @@
 // ===========================================
 
 const Sound = (() => {
+  // ---- All sound tuning in one place ----
+  // Volumes are 0–1. Frequencies are Hz. Durations are seconds.
+  const SOUND_CONFIG = {
+    shoot: {
+      volume: 0.15,
+      freqStart: 880, freqEnd: 440,
+      duration: 0.09,
+    },
+    hit: {
+      volume: 0.25,
+      filterFreq: 1500, filterQ: 1.5,
+      duration: 0.1,
+    },
+    death: {
+      volume: 0.3,
+      freqStart: 400, freqEnd: 80,
+      duration: 0.4,
+    },
+    explosion: {
+      noiseVolume: 0.35,
+      noiseFreqStart: 2000, noiseFreqEnd: 200,
+      noiseDuration: 0.3,
+      rumbleVolume: 0.25,
+      rumbleFreqStart: 60, rumbleFreqEnd: 30,
+      rumbleDuration: 0.5,
+    },
+    freeze: {
+      volume: 0.2,
+      freqStart: 300, freqEnd: 1200,
+      duration: 0.3,
+    },
+    countdown: {
+      volume: 0.2,
+      freq: 600,
+      duration: 0.15,
+    },
+    go: {
+      volume: 0.15,
+      freqs: [800, 1000, 1200],
+      duration: 0.3,
+    },
+    respawn: {
+      volume: 0.2,
+      freqs: [200, 400, 600, 800],
+      stepDuration: 0.06,
+      totalDuration: 0.25,
+    },
+    mazeChange: {
+      volume: 0.2,
+      filterFreqStart: 200, filterFreqEnd: 4000,
+      filterQ: 2,
+      duration: 0.4,
+    },
+    gameOver: {
+      volume: 0.25,
+      freqStart: 500, freqEnd: 100,
+      duration: 0.8,
+    },
+    victory: {
+      volume: 0.2,
+      // C5, E5, G5, C6
+      freqs: [523, 659, 784, 1047],
+      stepDuration: 0.14,
+    },
+    connected: {
+      volume: 0.2,
+      freq1: 880, freq2: 1100,
+      stepDuration: 0.1,
+    },
+  };
+
   let audioCtx = null;
   let muted = false;
   let pendingSounds = [];
@@ -73,255 +144,254 @@ const Sound = (() => {
 
   // ---- Synth Functions ----
 
-  // Shoot — square wave 880→440Hz sweep, 80ms
+  // Shoot — quick square-wave freq sweep
   function synthShoot(pan) {
-    const out = createOutput(pan, 0.15);
+    const cfg = SOUND_CONFIG.shoot;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
+    const d = cfg.duration - 0.01; // ramp duration slightly shorter than stop time
     const osc = audioCtx.createOscillator();
     osc.type = "square";
-    osc.frequency.setValueAtTime(880, t);
-    osc.frequency.linearRampToValueAtTime(440, t + 0.08);
-    out.gain.gain.setValueAtTime(0.15, t);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.08);
+    osc.frequency.setValueAtTime(cfg.freqStart, t);
+    osc.frequency.linearRampToValueAtTime(cfg.freqEnd, t + d);
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.linearRampToValueAtTime(0, t + d);
     osc.connect(out.dest);
     osc.start(t);
-    osc.stop(t + 0.09);
+    osc.stop(t + cfg.duration);
   }
 
-  // Hit — white noise burst + bandpass, 100ms
+  // Hit — white noise burst through a bandpass filter
   function synthHit(pan) {
-    const out = createOutput(pan, 0.25);
+    const cfg = SOUND_CONFIG.hit;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
-    const buf = audioCtx.createBuffer(
-      1,
-      audioCtx.sampleRate * 0.1,
-      audioCtx.sampleRate,
-    );
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * cfg.duration, audioCtx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     const src = audioCtx.createBufferSource();
     src.buffer = buf;
     const filter = audioCtx.createBiquadFilter();
     filter.type = "bandpass";
-    filter.frequency.value = 1500;
-    filter.Q.value = 1.5;
-    out.gain.gain.setValueAtTime(0.25, t);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.1);
+    filter.frequency.value = cfg.filterFreq;
+    filter.Q.value = cfg.filterQ;
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.linearRampToValueAtTime(0, t + cfg.duration);
     src.connect(filter);
     filter.connect(out.dest);
     src.start(t);
-    src.stop(t + 0.1);
+    src.stop(t + cfg.duration);
   }
 
-  // Death — sawtooth 400→80Hz descending sweep, 400ms
+  // Death — sawtooth descending sweep
   function synthDeath(pan) {
-    const out = createOutput(pan, 0.3);
+    const cfg = SOUND_CONFIG.death;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(400, t);
-    osc.frequency.exponentialRampToValueAtTime(80, t + 0.4);
-    out.gain.gain.setValueAtTime(0.3, t);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.4);
+    osc.frequency.setValueAtTime(cfg.freqStart, t);
+    osc.frequency.exponentialRampToValueAtTime(cfg.freqEnd, t + cfg.duration);
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.linearRampToValueAtTime(0, t + cfg.duration);
     osc.connect(out.dest);
     osc.start(t);
-    osc.stop(t + 0.41);
+    osc.stop(t + cfg.duration + 0.01);
   }
 
-  // Explosion — white noise burst + low sine rumble, 500ms
+  // Explosion — filtered noise burst layered with a low sub-bass rumble
   function synthExplosion(pan) {
+    const cfg = SOUND_CONFIG.explosion;
     const t = audioCtx.currentTime;
 
-    // Noise burst
-    const noiseOut = createOutput(pan, 0.35);
+    // High-frequency crunch
+    const noiseOut = createOutput(pan, cfg.noiseVolume);
     if (!noiseOut) return;
-    const buf = audioCtx.createBuffer(
-      1,
-      audioCtx.sampleRate * 0.3,
-      audioCtx.sampleRate,
-    );
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * cfg.noiseDuration, audioCtx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     const src = audioCtx.createBufferSource();
     src.buffer = buf;
     const filter = audioCtx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(2000, t);
-    filter.frequency.exponentialRampToValueAtTime(200, t + 0.3);
-    noiseOut.gain.gain.setValueAtTime(0.35, t);
-    noiseOut.gain.gain.linearRampToValueAtTime(0, t + 0.3);
+    filter.frequency.setValueAtTime(cfg.noiseFreqStart, t);
+    filter.frequency.exponentialRampToValueAtTime(cfg.noiseFreqEnd, t + cfg.noiseDuration);
+    noiseOut.gain.gain.setValueAtTime(cfg.noiseVolume, t);
+    noiseOut.gain.gain.linearRampToValueAtTime(0, t + cfg.noiseDuration);
     src.connect(filter);
     filter.connect(noiseOut.dest);
     src.start(t);
-    src.stop(t + 0.3);
+    src.stop(t + cfg.noiseDuration);
 
-    // Low rumble
-    const rumbleOut = createOutput(pan, 0.25);
+    // Sub-bass rumble
+    const rumbleOut = createOutput(pan, cfg.rumbleVolume);
     if (!rumbleOut) return;
     const osc = audioCtx.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(60, t);
-    osc.frequency.exponentialRampToValueAtTime(30, t + 0.5);
-    rumbleOut.gain.gain.setValueAtTime(0.25, t);
-    rumbleOut.gain.gain.linearRampToValueAtTime(0, t + 0.5);
+    osc.frequency.setValueAtTime(cfg.rumbleFreqStart, t);
+    osc.frequency.exponentialRampToValueAtTime(cfg.rumbleFreqEnd, t + cfg.rumbleDuration);
+    rumbleOut.gain.gain.setValueAtTime(cfg.rumbleVolume, t);
+    rumbleOut.gain.gain.linearRampToValueAtTime(0, t + cfg.rumbleDuration);
     osc.connect(rumbleOut.dest);
     osc.start(t);
-    osc.stop(t + 0.51);
+    osc.stop(t + cfg.rumbleDuration + 0.01);
   }
 
-  // Freeze — sine 300→1200Hz ascending sweep, 300ms
+  // Freeze — icy ascending sine sweep
   function synthFreeze(pan) {
-    const out = createOutput(pan, 0.2);
+    const cfg = SOUND_CONFIG.freeze;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(300, t);
-    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.3);
-    out.gain.gain.setValueAtTime(0.2, t);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.3);
+    osc.frequency.setValueAtTime(cfg.freqStart, t);
+    osc.frequency.exponentialRampToValueAtTime(cfg.freqEnd, t + cfg.duration);
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.linearRampToValueAtTime(0, t + cfg.duration);
     osc.connect(out.dest);
     osc.start(t);
-    osc.stop(t + 0.31);
+    osc.stop(t + cfg.duration + 0.01);
   }
 
-  // Countdown tick — sine beep 600Hz, 150ms
+  // Countdown tick
   function synthCountdown(pan) {
-    const out = createOutput(pan, 0.2);
+    const cfg = SOUND_CONFIG.countdown;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     osc.type = "sine";
-    osc.frequency.value = 600;
-    out.gain.gain.setValueAtTime(0.2, t);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.15);
+    osc.frequency.value = cfg.freq;
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.linearRampToValueAtTime(0, t + cfg.duration);
     osc.connect(out.dest);
     osc.start(t);
-    osc.stop(t + 0.16);
+    osc.stop(t + cfg.duration + 0.01);
   }
 
-  // Go — sine chord 800+1000+1200Hz, 300ms
+  // Go — ascending sine chord
   function synthGo(pan) {
-    const out = createOutput(pan, 0.15);
+    const cfg = SOUND_CONFIG.go;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
-    [800, 1000, 1200].forEach((freq) => {
+    cfg.freqs.forEach((freq) => {
       const osc = audioCtx.createOscillator();
       osc.type = "sine";
       osc.frequency.value = freq;
       osc.connect(out.dest);
       osc.start(t);
-      osc.stop(t + 0.3);
+      osc.stop(t + cfg.duration);
     });
-    out.gain.gain.setValueAtTime(0.15, t);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.3);
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.linearRampToValueAtTime(0, t + cfg.duration);
   }
 
-  // Respawn — triangle wave rising arpeggio 200→400→600→800Hz, 250ms
+  // Respawn — rising arpeggio
   function synthRespawn(pan) {
-    const out = createOutput(pan, 0.2);
+    const cfg = SOUND_CONFIG.respawn;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
-    const notes = [200, 400, 600, 800];
-    const step = 0.06;
-    notes.forEach((freq, i) => {
+    cfg.freqs.forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
       osc.type = "triangle";
       osc.frequency.value = freq;
       osc.connect(out.dest);
-      osc.start(t + i * step);
-      osc.stop(t + i * step + step);
+      osc.start(t + i * cfg.stepDuration);
+      osc.stop(t + i * cfg.stepDuration + cfg.stepDuration);
     });
-    out.gain.gain.setValueAtTime(0.2, t);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.25);
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.linearRampToValueAtTime(0, t + cfg.totalDuration);
   }
 
-  // Maze change — filtered noise sweep low→high, 400ms
+  // Maze change — filtered noise sweep low to high
   function synthMazeChange(pan) {
-    const out = createOutput(pan, 0.2);
+    const cfg = SOUND_CONFIG.mazeChange;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
-    const buf = audioCtx.createBuffer(
-      1,
-      audioCtx.sampleRate * 0.4,
-      audioCtx.sampleRate,
-    );
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * cfg.duration, audioCtx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     const src = audioCtx.createBufferSource();
     src.buffer = buf;
     const filter = audioCtx.createBiquadFilter();
     filter.type = "bandpass";
-    filter.frequency.setValueAtTime(200, t);
-    filter.frequency.exponentialRampToValueAtTime(4000, t + 0.4);
-    filter.Q.value = 2;
-    out.gain.gain.setValueAtTime(0.2, t);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.4);
+    filter.frequency.setValueAtTime(cfg.filterFreqStart, t);
+    filter.frequency.exponentialRampToValueAtTime(cfg.filterFreqEnd, t + cfg.duration);
+    filter.Q.value = cfg.filterQ;
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.linearRampToValueAtTime(0, t + cfg.duration);
     src.connect(filter);
     filter.connect(out.dest);
     src.start(t);
-    src.stop(t + 0.4);
+    src.stop(t + cfg.duration);
   }
 
-  // Game over — sawtooth 500→100Hz slow descent, 800ms
+  // Game over — sawtooth descending sweep
   function synthGameOver(pan) {
-    const out = createOutput(pan, 0.25);
+    const cfg = SOUND_CONFIG.gameOver;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(500, t);
-    osc.frequency.exponentialRampToValueAtTime(100, t + 0.8);
-    out.gain.gain.setValueAtTime(0.25, t);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.8);
+    osc.frequency.setValueAtTime(cfg.freqStart, t);
+    osc.frequency.exponentialRampToValueAtTime(cfg.freqEnd, t + cfg.duration);
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.linearRampToValueAtTime(0, t + cfg.duration);
     osc.connect(out.dest);
     osc.start(t);
-    osc.stop(t + 0.81);
+    osc.stop(t + cfg.duration + 0.01);
   }
 
-  // Victory — square wave 8-bit fanfare C5-E5-G5-C6, 600ms
+  // Victory — 8-bit fanfare arpeggio (C5-E5-G5-C6)
   function synthVictory(pan) {
-    const out = createOutput(pan, 0.2);
+    const cfg = SOUND_CONFIG.victory;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
-    const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
-    const step = 0.14;
-    notes.forEach((freq, i) => {
+    const totalDuration = cfg.freqs.length * cfg.stepDuration;
+    cfg.freqs.forEach((freq, i) => {
       const osc = audioCtx.createOscillator();
       osc.type = "square";
       osc.frequency.value = freq;
       osc.connect(out.dest);
-      osc.start(t + i * step);
-      osc.stop(t + i * step + step + 0.02);
+      osc.start(t + i * cfg.stepDuration);
+      osc.stop(t + i * cfg.stepDuration + cfg.stepDuration + 0.02);
     });
-    out.gain.gain.setValueAtTime(0.2, t);
-    out.gain.gain.setValueAtTime(0.2, t + 0.55);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.6);
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.setValueAtTime(cfg.volume, t + totalDuration - 0.05);
+    out.gain.gain.linearRampToValueAtTime(0, t + totalDuration);
   }
 
-  // Connected — two-tone sine 880Hz then 1100Hz, 200ms
+  // Connected — two-tone ping
   function synthConnected(pan) {
-    const out = createOutput(pan, 0.2);
+    const cfg = SOUND_CONFIG.connected;
+    const out = createOutput(pan, cfg.volume);
     if (!out) return;
     const t = audioCtx.currentTime;
+    const s = cfg.stepDuration;
     const osc1 = audioCtx.createOscillator();
     osc1.type = "sine";
-    osc1.frequency.value = 880;
+    osc1.frequency.value = cfg.freq1;
     osc1.connect(out.dest);
     osc1.start(t);
-    osc1.stop(t + 0.1);
+    osc1.stop(t + s);
     const osc2 = audioCtx.createOscillator();
     osc2.type = "sine";
-    osc2.frequency.value = 1100;
+    osc2.frequency.value = cfg.freq2;
     osc2.connect(out.dest);
-    osc2.start(t + 0.1);
-    osc2.stop(t + 0.2);
-    out.gain.gain.setValueAtTime(0.2, t);
-    out.gain.gain.setValueAtTime(0.2, t + 0.18);
-    out.gain.gain.linearRampToValueAtTime(0, t + 0.2);
+    osc2.start(t + s);
+    osc2.stop(t + s * 2);
+    out.gain.gain.setValueAtTime(cfg.volume, t);
+    out.gain.gain.setValueAtTime(cfg.volume, t + s * 2 - 0.02);
+    out.gain.gain.linearRampToValueAtTime(0, t + s * 2);
   }
 
   // ---- Sound ID → synth function map ----
