@@ -3,30 +3,26 @@
 // ===========================================
 
 const Physics = (() => {
-  // ---- AABB Collision (two rectangles) ----
+  // Axis-aligned bounding-box overlap test
   function rectsOverlap(a, b) {
     return (
       a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
     );
   }
 
-  // ---- Circle-Rect Collision (bullet vs player/obstacle) ----
+  // Circle vs rectangle \u2014 used when checking bullets against players and walls
   function circleRectOverlap(circle, rect) {
-    // Find closest point on rect to circle center
     const closestX = Math.max(rect.x, Math.min(circle.x, rect.x + rect.w));
     const closestY = Math.max(rect.y, Math.min(circle.y, rect.y + rect.h));
-
     const dx = circle.x - closestX;
     const dy = circle.y - closestY;
-
     return dx * dx + dy * dy < circle.r * circle.r;
   }
 
-  // ---- Check if player can move to new position ----
+  // Returns true if a player of PLAYER_SIZE can occupy position (newX, newY)
   function canMoveTo(newX, newY) {
     const playerRect = { x: newX, y: newY, w: PLAYER_SIZE, h: PLAYER_SIZE };
 
-    // Arena bounds
     if (
       newX < 0 ||
       newX + PLAYER_SIZE > CANVAS_WIDTH ||
@@ -36,17 +32,14 @@ const Physics = (() => {
       return false;
     }
 
-    // Wall collision (uses active maze)
     for (const wall of activeMaze.walls) {
-      if (rectsOverlap(playerRect, wall)) {
-        return false;
-      }
+      if (rectsOverlap(playerRect, wall)) return false;
     }
 
     return true;
   }
 
-  // ---- Check bullet vs walls → returns true if bullet should be removed ----
+  // Returns true when a bullet has collided with a wall and should be removed
   function bulletHitsObstacle(bullet) {
     const bRect = {
       x: bullet.x - BULLET_WIDTH / 2,
@@ -56,14 +49,12 @@ const Physics = (() => {
     };
 
     for (const wall of activeMaze.walls) {
-      if (rectsOverlap(bRect, wall)) {
-        return true;
-      }
+      if (rectsOverlap(bRect, wall)) return true;
     }
     return false;
   }
 
-  // ---- Check bullet vs player → returns true if hit ----
+  // Returns true when a bullet has hit a player (dead players are ignored)
   function bulletHitsPlayer(bullet, player) {
     if (!player.alive) return false;
 
@@ -78,7 +69,7 @@ const Physics = (() => {
     return rectsOverlap(bRect, pRect);
   }
 
-  // ---- Check if bullet is out of bounds ----
+  // Returns true when a bullet has left the visible play area
   function bulletOutOfBounds(bullet) {
     return (
       bullet.x < -BULLET_SIZE ||

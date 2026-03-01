@@ -3,30 +3,39 @@
 // ===========================================
 
 const Game = (() => {
+  // ---- All game-level tuning knobs in one place ----
+  // Change values here; don't dig through the code below.
   const GAME_CONFIG = {
     INPUT: {
-      MOVE_UP: ["KeyW", "ArrowUp"],
-      MOVE_DOWN: ["KeyS", "ArrowDown"],
-      MOVE_LEFT: ["KeyA", "ArrowLeft"],
+      MOVE_UP:    ["KeyW", "ArrowUp"],
+      MOVE_DOWN:  ["KeyS", "ArrowDown"],
+      MOVE_LEFT:  ["KeyA", "ArrowLeft"],
       MOVE_RIGHT: ["KeyD", "ArrowRight"],
-      SHOOT: ["Space"],
-      PREVENT_DEFAULT: [
-        "ArrowUp",
-        "ArrowDown",
-        "ArrowLeft",
-        "ArrowRight",
-        "Space",
-      ],
+      SHOOT:      ["Space"],
+      // Keys that get their default browser behaviour suppressed during play
+      PREVENT_DEFAULT: ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"],
       RESTART: "KeyR",
     },
+    PHYSICS: {
+      STEP_MS: 1000 / 60,  // fixed 60 Hz physics timestep
+    },
     NETWORK: {
-      RESYNC_INTERVAL_MS: 5000,
-      RECONNECT_TIMEOUT_MS: 75000, // must outlast PeerJS server's ~60s peer expiry
-      RECONNECT_INTERVAL_MS: 3000,
+      RESYNC_INTERVAL_MS:     5000,   // full state resync every 5 s
+      // 75 s window must outlast PeerJS server's ~60 s peer-ID expiry
+      RECONNECT_TIMEOUT_MS:   75000,
+      RECONNECT_INTERVAL_MS:  3000,   // retry every 3 s inside reconnect window
+      CORRECTION_INTERVAL_MS: 100,    // host sends authority corrections at 10 Hz
+      DATA_TIMEOUT_MS:        5000,   // guest triggers reconnect after 5 s silence
+      LOBBY_MAX_RETRIES:      5,      // max room-creation retries before giving up
     },
     VIEWPORT: {
-      SAFE_MARGIN: 24,
-      MAX_SCALE: 2,
+      SAFE_MARGIN: 24,  // px kept clear on each edge of the window
+      MAX_SCALE:    2,  // canvas never upscales beyond 2×
+    },
+    TOUCH: {
+      DEAD_ZONE:    14,    // px drag required before a joystick direction registers
+      BASE_RADIUS:  65,    // half the diameter of the joystick base (130 px)
+      SPIN_WINDOW_MS: 2000, // all 4 quadrants must be hit within this time to count as a spin
     },
   };
 
@@ -38,13 +47,14 @@ const Game = (() => {
   let selectedMazeKey = "arena_classic";
   let mazeRotationStart = 0;
 
-  // ---- Match Timer (6 mazes × 1 min = 6 min total) ----
-  let matchStartTime = 0;
-  let mazesPlayed = 0;
-  let mazeOrder = []; // shuffled order of maze keys
-  let isDraw = false;
+  // ---- Match timer ----
+  let matchStartTime  = 0;
+  let mazesPlayed     = 0;
+  let mazeOrder       = []; // shuffled on match start; user's picked map goes first
+  let isDraw          = false;
 
-  // ---- Online Mode State ----
+  // ---- Online mode state ----
+
   let gameMode = "lobby"; // 'lobby' | 'online-host' | 'online-guest'
   let remoteInput = {
     up: false,
@@ -61,28 +71,26 @@ const Game = (() => {
   let displayMatchTimeLeft = null;
   let initialized = false;
   let lastResync = 0;
-  let bgPhysicsInterval = null; // setInterval id for host physics when tab is hidden
+  let bgPhysicsInterval = null;
   let lobbyRetryCount = 0;
-  const LOBBY_MAX_RETRIES = 5;
+  // Aliases for the network timing constants (avoids long property paths below)
+  const LOBBY_MAX_RETRIES      = GAME_CONFIG.NETWORK.LOBBY_MAX_RETRIES;
+  const DATA_TIMEOUT_MS        = GAME_CONFIG.NETWORK.DATA_TIMEOUT_MS;
+  const CORRECTION_INTERVAL_MS = GAME_CONFIG.NETWORK.CORRECTION_INTERVAL_MS;
   let lastDataReceived = 0;
-  const DATA_TIMEOUT_MS = 5000;
   let lastCorrection = 0;
-  const CORRECTION_INTERVAL_MS = 100; // 10 Hz authority corrections
-  // Holds saved game state to restore after host page reload
+  // Game state stashed here so a host page-reload can resume mid-match
   let pendingResumeState = null;
-  // Host-authoritative player states received at 60 Hz (guest applies directly)
-  let hostP1State = null;
-  let hostP2State = null;
-  // Sequence counter stamped on every host_input; guest drops older packets
-  let hostInputSeq = 0;
+  let hostP1State = null; // last P1 position/dir received from host at 60 Hz
+  let hostP2State = null; // last P2 position/dir received from host at 60 Hz
+  // Sequence counter on host_input packets; guest drops anything ≤ last seen
+  let hostInputSeq     = 0;
   let lastHostInputSeq = 0;
 
-  // ---- Get spawn position from active maze ----
-  // Deterministic corner-based spawns that rotate each maze.
-  // Even mazes (0, 2, 4…): P1 → top-right, P2 → bottom-left
-  // Odd  mazes (1, 3, 5…): P1 → bottom-left, P2 → top-right
-  // Both host and guest compute the same result — no network sync needed.
-
+  // Deterministic spawn selection that alternates corners each maze:
+  //   even maze index (0,2,4…)  P1 → top-right,   P2 → bottom-left
+  //   odd  maze index (1,3,5…)  P1 → bottom-left,  P2 → top-right
+  // Both host and guest compute the same result, so no sync needed.
   function getSpawn(playerId) {
     const allSpawns = [...activeMaze.p1Spawns, ...activeMaze.p2Spawns];
     if (allSpawns.length < 2) return allSpawns[0] || { x: 100, y: 100 };
@@ -118,7 +126,8 @@ const Game = (() => {
     }
   }
 
-  // ---- Players ----
+  // ---- Player setup ----
+
   function createPlayer(id) {
     const spawn = getSpawn(id);
     const dir = id === 1 ? { ...DEFAULT_DIR_P1 } : { ...DEFAULT_DIR_P2 };
@@ -135,7 +144,7 @@ const Game = (() => {
       freezeTimer: 0,
       damageFlashTimer: 0,
       speedBoostTimer: 0,
-      weaponType: 'normal',   // 'normal' | 'rapidfire' | 'scatter'
+      weaponType: 'normal',  // 'normal' | 'rapidfire' | 'scatter'
       weaponTimer: 0,
     };
   }
@@ -144,35 +153,31 @@ const Game = (() => {
   let p2 = createPlayer(2);
   let bullets = [];
 
-  // ---- Dynamic Bombs ----
+  // ---- Dynamic entities ----
   let bombs = [];
   let explosions = [];
   let lastBombSpawn = 0;
-  let nextBombSpawnDelay = 0; // randomized after each spawn
+  let nextBombSpawnDelay = 0;
 
-  // ---- Dynamic Zombies ----
   let zombies = [];
   let lastZombieSpawn = 0;
 
-  // ---- Health Packs ----
   let healthPacks = [];
   let lastHealthPackSpawn = 0;
 
-  // ---- Floating Texts (kill-feed / damage numbers) ----
   let floatingTexts = [];
 
-  // ---- Speed Boost Pickups ----
   let speedBoostPickups = [];
   let lastSpeedBoostSpawn = 0;
 
-  // ---- Weapon Pickups ----
   let weaponPickups = [];
   let lastWeaponSpawn = 0;
 
-  // ---- Screen Shake (triggered by maze urgency ticks) ----
   let screenShakeDuration = 0;
-  let lastUrgencySecond = -1;
+  let lastUrgencySecond   = -1;
 
+  // Pick a random open path cell, avoiding cells too close to either player.
+  // The 20-attempt cap prevents an infinite loop on very crowded maps.
   function getRandomPathCell() {
     const cells = activeMaze.pathCells;
     if (!cells || cells.length === 0) return null;
@@ -200,8 +205,7 @@ const Game = (() => {
     return { x: cell.c * CELL_W + CELL_W / 2, y: cell.r * CELL_H + CELL_H / 2 };
   }
 
-  // Returns a spawn position that is also not too close to any item in avoidItems[]
-  // avoidItems is an array of objects with {x, y}. minDist defaults to 3 cells.
+  // Like getRandomPathCell but also keeps distance from existing pickups/bombs.
   function getSpawnPosAvoiding(avoidItems = [], minDist = CELL_W * 3) {
     const cells = activeMaze.pathCells;
     if (!cells || cells.length === 0) return null;
@@ -219,8 +223,9 @@ const Game = (() => {
   }
 
   function spawnBomb() {
-    // Dynamic cap: ramps from 1 → BOMB_MAX over the maze rotation period
-    const elapsed = Date.now() - mazeRotationStart;
+    // Active bomb cap ramps from BOMB_INITIAL_COUNT to BOMB_MAX over the maze
+    // lifespan so early-game feels calmer than late-game
+    const elapsed  = Date.now() - mazeRotationStart;
     const progress = Math.min(1, elapsed / MAZE_ROTATION_MS); // 0→1
     // Ramp from BOMB_INITIAL_COUNT → BOMB_MAX over the maze rotation period
     const currentMax = Math.floor(BOMB_INITIAL_COUNT + (BOMB_MAX - BOMB_INITIAL_COUNT) * progress);
@@ -294,7 +299,8 @@ const Game = (() => {
     });
   }
 
-  // ---- Dynamic Zombies ----
+  // ---- Zombies ----
+
   function spawnZombie() {
     if (zombies.length >= ZOMBIE_MAX) return;
     const pos = getRandomPathCell();
@@ -373,19 +379,18 @@ const Game = (() => {
     });
   }
 
-  // ---- Input State ----
-  // Online: Both use WASD + Space (each on own machine)
+  // ---- Input handling ----
+  // Online: both players use WASD + Space on their own machine.
+  // Local 2-player uses the same keys since the GAME_CONFIG.INPUT arrays
+  // include both WASD and arrow variants.
   const keys = {};
 
   function handleKeyDown(e) {
     keys[e.code] = true;
 
-    // Prevent scrolling from arrow keys / space
-    if (GAME_CONFIG.INPUT.PREVENT_DEFAULT.includes(e.code)) {
-      e.preventDefault();
-    }
+    if (GAME_CONFIG.INPUT.PREVENT_DEFAULT.includes(e.code)) e.preventDefault();
 
-    // Restart on R when game over (host only)
+    // Host can press R to restart after game over
     if (
       e.code === GAME_CONFIG.INPUT.RESTART &&
       gameState === STATE.GAME_OVER &&
@@ -399,7 +404,8 @@ const Game = (() => {
     keys[e.code] = false;
   }
 
-  // ---- Player Movement (key-based) ----
+  // ---- Player movement ----
+
   function isAnyKeyDown(codes) {
     return codes.some((code) => keys[code]);
   }
@@ -448,10 +454,9 @@ const Game = (() => {
     }
   }
 
-  // ---- Remote Player Movement (from network input) ----
+  // Process input that arrived from the remote peer via the "input" message
   function processRemoteInput(player) {
-    if (!player.alive) return;
-    if (player.freezeTimer > 0) return; // frozen — no input
+    if (!player.alive || player.freezeTimer > 0) return;
 
     let newX = player.x;
     let newY = player.y;
@@ -491,7 +496,7 @@ const Game = (() => {
     }
   }
 
-  // ---- Check if new position collides with the other player ----
+  // Prevent players from overlapping each other
   function collidesWithOtherPlayer(player, newX, newY) {
     const other = player.id === 1 ? p2 : p1;
     if (!other.alive) return false;
@@ -503,6 +508,7 @@ const Game = (() => {
   }
 
   // ---- Shooting ----
+
   function tryShoot(player) {
     const now = Date.now();
     const currentFireRate = player.weaponType === 'rapidfire' ? RAPID_FIRE_RATE_MS : FIRE_RATE;
@@ -540,12 +546,11 @@ const Game = (() => {
     Sound.play("shoot", player.x, player.y);
   }
 
-  // ---- Floating Text Notifications ----
   function addFloatingText(text, x, y, color) {
     floatingTexts.push({ text, x, y, color, startTime: Date.now() });
   }
 
-  // ---- Health Packs ----
+  // ---- Health packs ----
   function spawnHealthPack() {
     if (healthPacks.length >= HEALTH_PACK_MAX) return;
     const all = [...bombs, ...speedBoostPickups, ...weaponPickups, ...healthPacks];
@@ -579,7 +584,8 @@ const Game = (() => {
     }
   }
 
-  // ---- Speed Boost Pickups ----
+  // ---- Speed boost pickups ----
+
   function spawnSpeedBoostPickup() {
     if (speedBoostPickups.length >= SPEED_BOOST_MAX) return;
     const all = [...bombs, ...healthPacks, ...weaponPickups, ...speedBoostPickups];
@@ -612,7 +618,7 @@ const Game = (() => {
     }
   }
 
-  // ---- Weapon Pickups (rapid fire / scatter shot) ----
+  // ---- Weapon pickups (rapid fire / scatter shot) ----
   function spawnWeaponPickup() {
     if (weaponPickups.length >= WEAPON_MAX) return;
     const all = [...bombs, ...healthPacks, ...speedBoostPickups, ...weaponPickups];
@@ -648,7 +654,7 @@ const Game = (() => {
     }
   }
 
-  // ---- Update Bullets ----
+  // ---- Bullet update ----
   function updateBullets() {
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
@@ -667,7 +673,7 @@ const Game = (() => {
         continue;
       }
 
-      // Validate bullet ownership — discard corrupted bullets
+      // Discard bullets with an invalid owner (shouldn’t happen, but guard it)
       if (b.owner !== 1 && b.owner !== 2) {
         bullets.splice(i, 1);
         continue;
@@ -708,11 +714,11 @@ const Game = (() => {
     }
   }
 
-  // ---- Player Death & Respawn ----
+  // ---- Death & respawn ----
   function handlePlayerDeath(deadPlayer, killer) {
     deadPlayer.alive = false;
     deadPlayer.respawnTimer = RESPAWN_TIME;
-    deadPlayer.killedBy = killer; // remember killer for smart respawn
+    deadPlayer.killedBy = killer; // used by respawnPlayer to pick a safe spawn
     killer.score += 1;
     Sound.play("death", deadPlayer.x, deadPlayer.y);
     // Kill-feed notifications
@@ -743,14 +749,12 @@ const Game = (() => {
   }
 
   function respawnPlayer(player, killer) {
-    // Collect all spawn points from both pools
     const allSpawns = [...activeMaze.p1Spawns, ...activeMaze.p2Spawns];
     let spawn;
 
     if (killer && allSpawns.length > 1) {
-      // Pick the spawn point farthest from the killer's current position
-      let best = allSpawns[0];
-      let bestDist = 0;
+      // Prefer the spawn point farthest from the killer so you don’t appear right next to them
+      let best = allSpawns[0], bestDist = 0;
       for (const s of allSpawns) {
         const dx = s.x - killer.x;
         const dy = s.y - killer.y;
@@ -779,11 +783,11 @@ const Game = (() => {
     Sound.play("respawn", player.x, player.y);
   }
 
-  // ---- Maze Rotation (cycle through all mazes) ----
+  // ---- Maze rotation ----
+
   function checkMazeRotation() {
-    // Hard wall-clock guard: if total match time has elapsed (e.g. after a
-    // tab suspension that froze the rAF loop), end immediately so the game
-    // never outlasts what the HUD match timer shows.
+    // Also catch the case where the tab was frozen long enough that the rAF
+    // loop never fired the rotation — check absolute wall-clock time
     const totalMatchMs = MAZE_KEYS.length * MAZE_ROTATION_MS;
     if (Date.now() - matchStartTime >= totalMatchMs) {
       handleMatchTimeout();
@@ -798,8 +802,7 @@ const Game = (() => {
   function shuffleMazeOrder(firstMazeKey) {
     const keys = [...MAZE_KEYS];
     // Fisher-Yates shuffle
-    for (let i = keys.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+    for (let i = keys.length - 1; i > 0; i--) {      const j = Math.floor(Math.random() * (i + 1));
       [keys[i], keys[j]] = [keys[j], keys[i]];
     }
     // If a preferred starting maze is given, move it to the front
@@ -830,12 +833,10 @@ const Game = (() => {
 
   function handleMatchTimeout() {
     isDraw = false;
-    if (p1.score > p2.score) {
-      winner = 1;
-    } else if (p2.score > p1.score) {
-      winner = 2;
-    } else {
-      // Draw — pick the player with more health, or true draw
+    if (p1.score > p2.score)      { winner = 1; }
+    else if (p2.score > p1.score) { winner = 2; }
+    else {
+      // Tied on kills — use HP as tiebreaker; true draw if HP also equal
       winner = p1.health > p2.health ? 1 : p2.health > p1.health ? 2 : 0;
       if (winner === 0) isDraw = true;
     }
@@ -892,6 +893,7 @@ const Game = (() => {
   }
 
   // ---- Countdown ----
+
   function startCountdown() {
     gameState = STATE.COUNTDOWN;
     countdownValue = COUNTDOWN_DURATION;
@@ -925,9 +927,10 @@ const Game = (() => {
     }
   }
 
-  // ---- Game Restart ----
+  // ---- Game restart ----
+
   function restartGame() {
-    // Set up maze BEFORE creating players so spawns use the correct maze
+    // Rebuild maze state before creating players so spawn coords are correct
     mazeOrder = shuffleMazeOrder(selectedMazeKey);
     mazesPlayed = 0;
     selectedMazeKey = mazeOrder[0];
@@ -973,10 +976,10 @@ const Game = (() => {
   }
 
   // ======================================================
-  // ---- Network Functions (Online Mode) ----
+  // ---- Network functions ----
   // ======================================================
 
-  // Guest sends WASD input to host every frame
+  // Guest → host: local input sent every frame
   function sendLocalInput() {
     Network.send({
       type: "input",
@@ -990,9 +993,7 @@ const Game = (() => {
     });
   }
 
-  // Host sends its input + authoritative positions to guest every frame.
-  // Host keys → guest simulates P1 locally (for shooting); positions → guest
-  // feeds interpolation buffers for jitter-free rendering of both players.
+  // Host → guest: key state + authoritative player positions at 60 Hz
   function sendHostInput() {
     Network.send({
       type: "host_input",
@@ -1009,10 +1010,9 @@ const Game = (() => {
     });
   }
 
-  // Host sends lightweight authority corrections at 10 Hz
+  // Host → guest: authority corrections at 10 Hz (health, scores, entity lists).
+  // Also persists match state to sessionStorage so a host reload can resume.
   function sendCorrections() {
-    // Persist state at 10 Hz so a host page reload can resume mid-match
-    // (but not if game is over — session was already cleared)
     const code = Network.getLastRoomCode();
     if (code && gameState !== STATE.GAME_OVER) {
       saveSession("host", code, {
@@ -1082,7 +1082,7 @@ const Game = (() => {
     });
   }
 
-  // Host broadcasts full game state to guest every frame
+  // Host → guest: one-shot full state broadcast used after connect/reconnect
   function broadcastState(fullSync) {
     const broadcastNow = Date.now();
     const mazeElapsed = (broadcastNow - mazeRotationStart) / 1000;
@@ -1149,7 +1149,7 @@ const Game = (() => {
     });
   }
 
-  // Guest applies received state from host
+  // Guest applies a full state snapshot received from the host
   function applyRemoteState(data) {
     // Detect maze change
     if (data.mazeKey && data.mazeKey !== selectedMazeKey) {
@@ -1230,10 +1230,9 @@ const Game = (() => {
     hostP2State = { x: data.p2.x, y: data.p2.y, dir: data.p2.dir };
   }
 
-  // Guest applies lightweight host corrections (10 Hz).
-  // Positions are applied directly (both players received at 60 Hz via host_input).
-  // Authority state (health, score, alive, game state) is snapped immediately.
-
+  // Guest applies lightweight corrections (10 Hz).
+  // Authority state (health, score, alive) is snapped immediately;
+  // positions come in via hostP1/P2State at 60 Hz.
   function applyCorrections(data) {
     // Detect maze change (host rotated to a new maze)
     if (data.mazeKey && data.mazeKey !== selectedMazeKey) {
@@ -1312,12 +1311,11 @@ const Game = (() => {
 
 
 
-  // ---- Render Interpolation Helpers ----
-  // Save physics positions before each tick so the renderer can interpolate
-  // between the previous and current state for sub-tick smoothness.
+  // ---- Render interpolation ----
+  // Save physics positions before each tick. The renderer interpolates between
+  // prev and current to smooth motion on high-refresh displays.
   function savePhysicsPositions() {
-    // Players: only save for host/local (physics-driven).
-    // Guest receives positions directly from host — no sub-frame interpolation.
+    // Guest positions come from the host every frame — no interpolation needed
     if (gameMode !== "online-guest") {
       p1.prevX = p1.x; p1.prevY = p1.y;
       p2.prevX = p2.x; p2.prevY = p2.y;
@@ -1329,9 +1327,7 @@ const Game = (() => {
   }
 
   function interpolateForRender(alpha) {
-    // Players: only interpolate for host/local (physics-driven).
-    // Guest applies host positions directly every frame — skip interpolation
-    // to avoid fighting the network-received positions.
+    // Guest positions come straight from host state — don’t interpolate them
     if (gameMode !== "online-guest") {
       p1._physX = p1.x; p1._physY = p1.y;
       p2._physX = p2.x; p2._physY = p2.y;
@@ -1366,7 +1362,7 @@ const Game = (() => {
     }
   }
 
-  // Route incoming network data
+  // Route incoming network messages to the right handler
   function handleNetworkData(data) {
     lastDataReceived = Date.now();
     // Config is a one-time setup message — always handle it
@@ -1402,9 +1398,8 @@ const Game = (() => {
       return;
     }
 
-    // Guest (re)joined mid-game — bootstrap them into the running match.
-    // Send config so the guest calls startOnlineGame(), then resync + full
-    // state so it converges to the current match state.
+    // Mid-game guest (re-)joined: bootstrap them into the running match.
+    // config starts their game loop, resync corrects maze/timer, broadcastState syncs positions.
     if (data.type === "ready" && gameMode === "online-host") {
       console.log("[Game] Guest sent 'ready' while game is running — bootstrapping");
       Network.sendReliable({
@@ -1450,7 +1445,8 @@ const Game = (() => {
     }
   }
 
-  // Handle peer disconnection
+  // ---- Disconnect handling ----
+
   function handleDisconnect() {
     if (isDisconnected || isReconnecting) return;
 
@@ -1464,10 +1460,10 @@ const Game = (() => {
   }
 
   // ---- Reconnection state machine ----
+
   function startReconnecting() {
     isReconnecting = true;
     reconnectDeadline = Date.now() + GAME_CONFIG.NETWORK.RECONNECT_TIMEOUT_MS;
-    console.log("[Game] Entering RECONNECTING state, 30s window");
     attemptReconnect();
     reconnectIntervalTimer = setInterval(() => {
       if (!isReconnecting) return;
@@ -1540,10 +1536,8 @@ const Game = (() => {
     }
   }
 
-  // ---- Page visibility: proactively reconnect on foreground ----
-  // ---- Host physics tick (extracted so setInterval can call it when tab is hidden) ----
-  // When the host tab is in background, browsers throttle rAF to ~1 fps.
-  // Running physics via setInterval keeps guest's P2 movement smooth.
+  // When the host tab is in the background, rAF is throttled to ~1 fps.
+  // Keep physics alive via setInterval so the guest sees smooth P2 movement.
   function runHostPhysicsTick() {
     if (gameMode !== "online-host") return;
     savePhysicsPositions();
@@ -1579,14 +1573,13 @@ const Game = (() => {
 
   function handleVisibilityChange() {
     if (document.visibilityState === "hidden") {
-      // Host tab going to background: keep physics alive via setInterval so the
-      // guest doesn't see a frozen P2. rAF in background is throttled to ~1fps.
+      // Start background interval so guest doesn’t see frozen P2 while tab is hidden
       if (gameMode === "online-host" && !bgPhysicsInterval) {
         bgPhysicsInterval = setInterval(runHostPhysicsTick, PHYSICS_STEP_MS);
       }
       return;
     }
-    // Tab became visible — stop background interval, rAF loop takes back over.
+    // Tab came back — rAF loop takes over again
     if (bgPhysicsInterval) {
       clearInterval(bgPhysicsInterval);
       bgPhysicsInterval = null;
@@ -1613,8 +1606,9 @@ const Game = (() => {
     }
   }
 
-  // Return to lobby screen
-  // ---- Session persistence (survives page reload) ----
+  // ---- Session persistence ----
+  // Saves role + room code to sessionStorage so a page reload can rejoin
+  // without the user having to re-enter the room code.
   const SESSION_KEY = "p2p-maze-shooter";
 
   function saveSession(role, roomCode, extra) {
@@ -1703,13 +1697,10 @@ const Game = (() => {
     }
   }
 
-  // ======================================================
-  // ---- Online UI ----
-  // ======================================================
+  // ---- Lobby UI setup ----
 
-  // ---- Build and launch (or re-launch) a host room ----
-  // Pass existingCode to reuse the same room code (e.g. after a drop while
-  // waiting in lobby). Pass null/undefined to generate a fresh code.
+  // Start or re-register a host room. Pass existingCode to keep the same room
+  // code (e.g. after a lobby disconnect). Pass null to generate a fresh code.
   function setupHostRoom(existingCode, freshCreate) {
     const isRetry = !!existingCode && !freshCreate;
     document.getElementById("connectionStatus").textContent = isRetry
@@ -1717,9 +1708,8 @@ const Game = (() => {
       : "Creating room...";
     document.getElementById("connectionStatus").className = "";
 
-    // Guard to prevent onPeerClosed from scheduling a second retry when
-    // onError has already queued one (e.g. after unavailable-id, PeerJS
-    // auto-destroys the peer which fires both callbacks).
+    // Guard: prevents onPeerClosed from queuing a second retry when onError
+    // already has one in flight (PeerJS auto-destroys the peer after unavailable-id)
     let retryScheduled = false;
 
     const hostCallbacks = {
@@ -1940,44 +1930,38 @@ const Game = (() => {
   }
 
   // ======================================================
-  // ---- Main Game Loop ----
+  // ---- Main game loop ----
   // ======================================================
-  const PHYSICS_STEP_MS = 1000 / 60; // fixed 60 Hz physics tick
-  let physicsAccumulator = 0;
-  let lastTime = 0;
+  const PHYSICS_STEP_MS   = GAME_CONFIG.PHYSICS.STEP_MS;
+  let physicsAccumulator  = 0;
+  let lastTime            = 0;
 
   function gameLoop(timestamp) {
     const rawDt = timestamp - lastTime;
     lastTime = timestamp;
 
-    // Accumulate wall-clock time; cap at 100 ms to avoid spiral-of-death
-    // after tab visibility changes or slow frames.
+    // Cap the accumulator to avoid the spiral-of-death after long pauses
     physicsAccumulator += Math.min(rawDt, 100);
     const runPhysics = physicsAccumulator >= PHYSICS_STEP_MS;
     if (runPhysics) {
       physicsAccumulator -= PHYSICS_STEP_MS;
-      // If we've fallen behind by more than one extra step, discard the
-      // surplus rather than catch-up and run physics multiple times fast.
+      // Discard leftover surplus rather than running multiple catch-up ticks
       if (physicsAccumulator >= PHYSICS_STEP_MS) physicsAccumulator = 0;
 
-      // Snapshot positions BEFORE physics for render interpolation
       savePhysicsPositions();
     }
 
     // --- Update ---
     if (gameMode === "online-guest") {
-      // Guest physics: bullets/bombs/zombies at 60 Hz; positions from host.
       if (runPhysics) {
         sendLocalInput();
-        // Guest does NOT run updateCountdown() locally — countdownValue and
-        // gameState come authoritatively from host corrections at 10 Hz.
-        // Running it locally caused the value to flicker between the two sources.
+        // Countdown state comes from host corrections at 10 Hz; don’t run it
+        // locally to avoid flickering between the two sources
         if (gameState === STATE.PLAYING) {
-          // P1: process host's key input for responsive bullet creation.
-          // Position will be overridden below by authoritative host state.
+          // P1: run host’s keys locally so bullets appear immediately
           processRemoteInput(p1);
 
-          // P2: guest handles shooting locally for responsive bullet creation.
+          // P2: guest runs its own shooting locally for the same reason
           if (p2.alive && p2.freezeTimer <= 0 && isAnyKeyDown(GAME_CONFIG.INPUT.SHOOT)) {
             tryShoot(p2);
           }
@@ -1992,22 +1976,17 @@ const Game = (() => {
         }
       }
 
-      // Apply authoritative host positions EVERY frame (not gated by physics)
-      // so rendering is as smooth as the display refresh rate — the same
-      // "dumb terminal" model used pre-632e3da that the user found smooth.
+      // Apply host-authoritative positions every frame (not gated by physics)
+      // so rendering is smooth regardless of display refresh rate
       if (hostP1State) {
-        p1.x = hostP1State.x;
-        p1.y = hostP1State.y;
-        p1.dir = hostP1State.dir;
+        p1.x = hostP1State.x; p1.y = hostP1State.y; p1.dir = hostP1State.dir;
       }
       if (hostP2State) {
-        p2.x = hostP2State.x;
-        p2.y = hostP2State.y;
-        p2.dir = hostP2State.dir;
+        p2.x = hostP2State.x; p2.y = hostP2State.y; p2.dir = hostP2State.dir;
       }
     } else if (runPhysics && !document.hidden) {
-      // Host / local: run all physics at fixed 60 Hz
-      // (When hidden, bgPhysicsInterval->runHostPhysicsTick handles host physics)
+      // Host / local: all physics at fixed 60 Hz
+      // (hidden tab: bgPhysicsInterval -> runHostPhysicsTick handles it)
       if (gameState === STATE.COUNTDOWN) {
         updateCountdown();
       }
@@ -2050,11 +2029,11 @@ const Game = (() => {
       }
     }
 
-    // Guest: detect host gone silent
+    // Guest safety-net: if the host stops sending data entirely (silent crash / drop)
+    // give it DATA_TIMEOUT_MS then trigger a reconnect the same way a close event would
     if (
       gameMode === "online-guest" &&
-      !isDisconnected &&
-      !isReconnecting &&
+      !isDisconnected && !isReconnecting &&
       lastDataReceived > 0 &&
       Date.now() - lastDataReceived > DATA_TIMEOUT_MS
     ) {
@@ -2063,10 +2042,8 @@ const Game = (() => {
       handleDisconnect();
     }
 
-    // --- Render with sub-tick interpolation ---
-    // alpha ∈ [0,1): 0 = right after physics tick, →1 = just before next tick.
-    // Standard fixed-timestep interpolation: renders one tick behind for
-    // perfectly smooth motion at any display refresh rate.
+    // Sub-tick render interpolation
+    // alpha in [0,1): 0 = right after a physics tick, approaching 1 = just before the next
     const renderAlpha = physicsAccumulator / PHYSICS_STEP_MS;
     interpolateForRender(renderAlpha);
 
@@ -2090,8 +2067,8 @@ const Game = (() => {
     Renderer.drawSpeedBoostPickups(speedBoostPickups);
     Renderer.drawWeaponPickups(weaponPickups);
     Renderer.drawFloatingTexts(floatingTexts);
-    // Damage flash: only show for the local player being hit
-    // online-host = P1, online-guest = P2, local = both
+    // Damage flash: show for the local player only
+    // (host = P1, guest = P2, local = both)
     if (gameMode === "online-host") {
       Renderer.drawDamageFlash(p1, "0,180,255");
     } else if (gameMode === "online-guest") {
@@ -2140,10 +2117,10 @@ const Game = (() => {
     // Maze change announcement
     Renderer.drawMazeAnnouncement(rawDt);
 
-    // Restore physics positions after rendering so game state stays accurate
+    // Restore physics positions so subsequent ticks use accurate coordinates
     restorePhysicsPositions();
 
-    // Clean up expired floating texts (once per frame is sufficient)
+    // Prune expired floating texts once per frame
     const floatNow = Date.now();
     for (let i = floatingTexts.length - 1; i >= 0; i--) {
       if (floatNow - floatingTexts[i].startTime > FLOATING_TEXT_DURATION_MS) {
@@ -2186,8 +2163,9 @@ const Game = (() => {
   }
 
   // ---- Initialization ----
+
   function init() {
-    if (initialized) return; // prevent double-adding listeners
+    if (initialized) return; // guard against double-wiring event listeners
     initialized = true;
 
     canvas = document.getElementById("gameCanvas");
@@ -2202,9 +2180,9 @@ const Game = (() => {
     // Clear all held keys when the tab loses focus so keys don't get "stuck"
     // (e.g. held key in tab1, switch to tab2 → keyup never fires in tab1).
     window.addEventListener("blur", () => {
+      // Clear all held keys when focus leaves so nothing stays stuck
       Object.keys(keys).forEach((k) => { keys[k] = false; });
-    });
-    window.addEventListener("resize", resizeCanvas);
+    });    window.addEventListener("resize", resizeCanvas);
 
     // Tap-to-restart on canvas (mobile — no "R" key)
     canvas.addEventListener("click", () => {
@@ -2275,6 +2253,7 @@ const Game = (() => {
   }
 
   // ---- Mobile touch controls ----
+
   function initTouchControls() {
     const shootBtn = document.getElementById("shoot-btn");
     const joystickZone = document.getElementById("joystick-zone");
@@ -2283,9 +2262,9 @@ const Game = (() => {
 
     if (!shootBtn || !joystickZone || !joystickBase || !joystickKnob) return;
 
-    const DEAD_ZONE = 14; // px — minimum drag before a direction registers
-    const BASE_RADIUS = 65; // half of joystick-base width (130px)
-    const KNOB_LIMIT = BASE_RADIUS - 28; // max knob travel from center
+    const DEAD_ZONE  = GAME_CONFIG.TOUCH.DEAD_ZONE;
+    const BASE_RADIUS = GAME_CONFIG.TOUCH.BASE_RADIUS;
+    const KNOB_LIMIT  = BASE_RADIUS - 28; // max knob travel from center (derived)
 
     // ---- Shoot button ----
     // Pointer events unify touch + mouse (works in DevTools device emulation).
@@ -2334,8 +2313,8 @@ const Game = (() => {
       // --- Spin-to-restart detection (game over only) ---
       // Track which of the 4 quadrants the knob passes through.
       // Visiting all 4 within SPIN_WINDOW_MS triggers a restart.
-      const SPIN_WINDOW_MS = 2000;
-      const q = (dx >= 0 ? 1 : 0) | (dy >= 0 ? 2 : 0); // 0/1/2/3
+      const SPIN_WINDOW_MS = GAME_CONFIG.TOUCH.SPIN_WINDOW_MS;
+      const q = (dx >= 0 ? 1 : 0) | (dy >= 0 ? 2 : 0); // quadrant: 0/1/2/3
       if (!spinVisited.has(q)) {
         if (spinVisited.size === 0) spinWindowStart = Date.now();
         spinVisited.add(q);
@@ -2466,7 +2445,8 @@ const Game = (() => {
     }
   }
 
-  // ---- Start online game (Phase 3) ----
+  // ---- Start online game ----
+
   function startOnlineGame(isHost) {
     gameMode = isHost ? "online-host" : "online-guest";
     isDisconnected = false;
@@ -2537,7 +2517,8 @@ const Game = (() => {
     requestAnimationFrame(gameLoop);
   }
 
-  // ---- Rejoin a saved session after page reload ----
+  // ---- Rejoin after page reload ----
+
   function rejoinSession() {
     const s = getSavedSession();
     if (!s) return false;

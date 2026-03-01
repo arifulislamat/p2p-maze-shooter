@@ -1,6 +1,9 @@
 // ===========================================
-// Game Constants & Configuration
+// Constants & Configuration
 // ===========================================
+// All gameplay tuning lives in CONFIG below so you only need to look
+// in one place. The flat aliases at the bottom let the rest of the
+// code use short names like PLAYER_SPEED instead of CONFIG.PLAYER.SPEED.
 
 const CONFIG = {
   CANVAS: {
@@ -21,7 +24,7 @@ const CONFIG = {
     FIRE_RATE_MS: 150,
   },
   SCORE: {
-    WIN: 12,
+    WIN: 8,
   },
   DIRECTIONS: {
     P1: { dx: 1, dy: 0 },
@@ -45,12 +48,12 @@ const CONFIG = {
   },
   BOMB: {
     SPAWN_INTERVAL_MS: 5000,
-    FUSE_MS: 1500,       // fuse duration — how quickly a bomb explodes
-    BLAST_RADIUS: 120,
-    BLAST_DAMAGE: 2,
+    FUSE_MS: 1500,       // how long the fuse burns before detonation
+    BLAST_RADIUS: 200,
+    BLAST_DAMAGE: 4,
     BLAST_ANIM_MS: 500,
-    MAX_BOMBS: 4,        // cap at game end of progress window
-    INITIAL_COUNT: 3,   // bombs allowed at the start of each maze
+    MAX_BOMBS: 4,        // cap that climbs toward over the life of each maze
+    INITIAL_COUNT: 3,    // active bombs allowed from the very start
   },
   ZOMBIE: {
     SPAWN_INTERVAL_MS: 6000,
@@ -61,23 +64,23 @@ const CONFIG = {
     SPEED: 0.8,           // px per physics tick chase speed
   },
   GAMEPLAY: {
-    DAMAGE_FLASH_MS: 150,             // how long the hit-flash overlay lasts
-    LOW_HEALTH_THRESHOLD: 4,          // HP at-or-below which the vignette activates
+    DAMAGE_FLASH_MS: 150,             // red-edge flash after taking a hit
+    LOW_HEALTH_THRESHOLD: 4,          // vignette activates at this HP or below
     HEALTH_PACK_SPAWN_INTERVAL_MS: 8000,
-    HEALTH_PACK_MAX: 1,               // max simultaneous health packs
-    HEALTH_PACK_HEAL: 3,              // HP restored per pickup
-    FLOATING_TEXT_DURATION_MS: 1200,  // how long kill/damage popups float
-    URGENT_MAZE_TIME_S: 10,           // seconds remaining before urgency tick+shake fires
+    HEALTH_PACK_MAX: 1,
+    HEALTH_PACK_HEAL: 3,
+    FLOATING_TEXT_DURATION_MS: 1200,  // how long damage/kill popups float
+    URGENT_MAZE_TIME_S: 10,           // last N seconds trigger tick sound + shake
     SPEED_BOOST_SPAWN_INTERVAL_MS: 12000,
-    SPEED_BOOST_MAX: 1,               // max simultaneous speed-boost pickups
-    SPEED_BOOST_DURATION_MS: 4000,    // how long the speed boost lasts
-    SPEED_BOOST_MULTIPLIER: 1.6,      // speed multiplier while boosted
+    SPEED_BOOST_MAX: 1,
+    SPEED_BOOST_DURATION_MS: 4000,
+    SPEED_BOOST_MULTIPLIER: 1.6,
     WEAPON_SPAWN_INTERVAL_MS: 10000,
-    WEAPON_MAX: 1,                    // max simultaneous weapon pickups on field
-    RAPID_FIRE_DURATION_MS: 5000,     // how long rapid-fire mode lasts
-    RAPID_FIRE_RATE_MS: 50,           // fire-rate cooldown while in rapid-fire mode
-    SCATTER_DURATION_MS: 5000,        // how long scatter-shot mode lasts
-    SCATTER_SPREAD_DEG: 25,           // angle (degrees) between scatter bullets
+    WEAPON_MAX: 1,
+    RAPID_FIRE_DURATION_MS: 5000,
+    RAPID_FIRE_RATE_MS: 50,           // fire-rate cooldown in rapid-fire mode
+    SCATTER_DURATION_MS: 5000,
+    SCATTER_SPREAD_DEG: 25,           // angle between each scatter bullet
   },
   COLORS: {
     background: "#0a0a1a",
@@ -112,51 +115,46 @@ const CONFIG = {
   },
 };
 
-const CANVAS_WIDTH = CONFIG.CANVAS.WIDTH;
+// Flat aliases — short names used throughout the rest of the codebase
+const CANVAS_WIDTH  = CONFIG.CANVAS.WIDTH;
 const CANVAS_HEIGHT = CONFIG.CANVAS.HEIGHT;
 
-// Player — half the smaller cell dimension so it fits centered in a cell
+// Player size is derived so it fits neatly inside a single grid cell
 const PLAYER_SIZE = Math.floor(
-  Math.min(CANVAS_WIDTH / CONFIG.MAZE.COLS, CANVAS_HEIGHT / CONFIG.MAZE.ROWS) /
-    2,
+  Math.min(CANVAS_WIDTH / CONFIG.MAZE.COLS, CANVAS_HEIGHT / CONFIG.MAZE.ROWS) / 2,
 );
-const PLAYER_SPEED = CONFIG.PLAYER.SPEED;
+const PLAYER_SPEED  = CONFIG.PLAYER.SPEED;
 const PLAYER_HEALTH = CONFIG.PLAYER.HEALTH;
-const RESPAWN_TIME = CONFIG.PLAYER.RESPAWN_MS;
+const RESPAWN_TIME  = CONFIG.PLAYER.RESPAWN_MS;
 
-// Bullets
-const BULLET_SIZE = CONFIG.BULLET.SIZE;
-const BULLET_WIDTH = CONFIG.BULLET.WIDTH;
+const BULLET_SIZE   = CONFIG.BULLET.SIZE;
+const BULLET_WIDTH  = CONFIG.BULLET.WIDTH;
 const BULLET_HEIGHT = CONFIG.BULLET.HEIGHT;
-const BULLET_SPEED = CONFIG.BULLET.SPEED;
-const FIRE_RATE = CONFIG.BULLET.FIRE_RATE_MS;
+const BULLET_SPEED  = CONFIG.BULLET.SPEED;
+const FIRE_RATE     = CONFIG.BULLET.FIRE_RATE_MS;
 
-// Scoring
 const WIN_SCORE = CONFIG.SCORE.WIN;
 
-// Colors — dark retro theme matching maze.jsx
 const COLORS = CONFIG.COLORS;
 
-// Default facing directions
-const DEFAULT_DIR_P1 = CONFIG.DIRECTIONS.P1; // facing right
-const DEFAULT_DIR_P2 = CONFIG.DIRECTIONS.P2; // facing left
+// Default facing directions (P1 faces right, P2 faces left)
+const DEFAULT_DIR_P1 = CONFIG.DIRECTIONS.P1;
+const DEFAULT_DIR_P2 = CONFIG.DIRECTIONS.P2;
 
-// Maze cell types — matches maze.jsx legend
-// 0 = path, 1 = wall, 2 = P1 spawn, 3 = P2 spawn, 4 = zombie spawn, 5 = bomb zone
-const CELL_PATH = CONFIG.CELLS.PATH;
-const CELL_WALL = CONFIG.CELLS.WALL;
-const CELL_P1 = CONFIG.CELLS.P1;
-const CELL_P2 = CONFIG.CELLS.P2;
+// Maze cell type constants
+const CELL_PATH  = CONFIG.CELLS.PATH;
+const CELL_WALL  = CONFIG.CELLS.WALL;
+const CELL_P1    = CONFIG.CELLS.P1;
+const CELL_P2    = CONFIG.CELLS.P2;
 const CELL_ZOMBIE = CONFIG.CELLS.ZOMBIE;
-const CELL_BOMB = CONFIG.CELLS.BOMB;
+const CELL_BOMB  = CONFIG.CELLS.BOMB;
 
 // Grid dimensions (all mazes are 21×15)
 const MAZE_COLS = CONFIG.MAZE.COLS;
 const MAZE_ROWS = CONFIG.MAZE.ROWS;
-const CELL_W = CANVAS_WIDTH / MAZE_COLS;
-const CELL_H = CANVAS_HEIGHT / MAZE_ROWS;
+const CELL_W    = CANVAS_WIDTH  / MAZE_COLS;
+const CELL_H    = CANVAS_HEIGHT / MAZE_ROWS;
 
-// Maze rotation interval (5 minutes)
 const MAZE_ROTATION_MS = CONFIG.MAZE.ROTATION_MS;
 
 // ---- All Mazes ----
@@ -291,9 +289,10 @@ const MAZES = {
 
 const MAZE_KEYS = Object.keys(MAZES);
 
-// ---- Maze Helper Functions ----
+// ---- Maze parsing ----
 
-// Convert a maze grid to obstacle rects + extract spawn positions
+// Builds wall collision rects and spawn-point lists from a maze definition.
+// Returns the same shape that Physics and Renderer both expect.
 function parseMaze(mazeKey) {
   const maze = MAZES[mazeKey];
   const walls = [];
@@ -325,13 +324,11 @@ function parseMaze(mazeKey) {
     }
   }
 
-  // Collect path cells for random bomb spawning
+  // Collect open-path cells so spawning logic can pick random safe spots
   const pathCells = [];
   for (let r = 0; r < MAZE_ROWS; r++) {
     for (let c = 0; c < MAZE_COLS; c++) {
-      if (maze.data[r][c] === CELL_PATH) {
-        pathCells.push({ r, c });
-      }
+      if (maze.data[r][c] === CELL_PATH) pathCells.push({ r, c });
     }
   }
 
@@ -347,55 +344,52 @@ function parseMaze(mazeKey) {
   };
 }
 
-// Active maze state — set by Game module
+// Active maze — overwritten by Game whenever the map rotates
 let activeMaze = parseMaze("arena_classic");
 
-// Game states
+// Game state machine values
 const STATE = {
-  LOBBY: "lobby",
-  COUNTDOWN: "countdown",
-  PLAYING: "playing",
-  GAME_OVER: "game_over",
+  LOBBY:        "lobby",
+  COUNTDOWN:    "countdown",
+  PLAYING:      "playing",
+  GAME_OVER:    "game_over",
   RECONNECTING: "reconnecting",
 };
 
-// Countdown duration
-const COUNTDOWN_DURATION = CONFIG.COUNTDOWN.DURATION_S; // seconds
+const COUNTDOWN_DURATION = CONFIG.COUNTDOWN.DURATION_S;
 
-// Bomb gameplay constants
+// Bomb aliases
 const BOMB_SPAWN_INTERVAL = CONFIG.BOMB.SPAWN_INTERVAL_MS;
-const BOMB_FUSE_TIME = CONFIG.BOMB.FUSE_MS;
-const BOMB_BLAST_RADIUS = CONFIG.BOMB.BLAST_RADIUS;
-const BOMB_BLAST_DAMAGE = CONFIG.BOMB.BLAST_DAMAGE;
-const BOMB_BLAST_ANIM_MS = CONFIG.BOMB.BLAST_ANIM_MS;
-const BOMB_MAX = CONFIG.BOMB.MAX_BOMBS;
+const BOMB_FUSE_TIME      = CONFIG.BOMB.FUSE_MS;
+const BOMB_BLAST_RADIUS   = CONFIG.BOMB.BLAST_RADIUS;
+const BOMB_BLAST_DAMAGE   = CONFIG.BOMB.BLAST_DAMAGE;
+const BOMB_BLAST_ANIM_MS  = CONFIG.BOMB.BLAST_ANIM_MS;
+const BOMB_MAX            = CONFIG.BOMB.MAX_BOMBS;
+const BOMB_INITIAL_COUNT  = CONFIG.BOMB.INITIAL_COUNT;
 
-// Zombie gameplay constants
+// Zombie aliases
 const ZOMBIE_SPAWN_INTERVAL = CONFIG.ZOMBIE.SPAWN_INTERVAL_MS;
-const ZOMBIE_MAX = CONFIG.ZOMBIE.MAX_ZOMBIES;
-const ZOMBIE_FREEZE_MS = CONFIG.ZOMBIE.FREEZE_MS;
-const ZOMBIE_HITBOX_RADIUS = CONFIG.ZOMBIE.HITBOX_RADIUS;
-const ZOMBIE_LIFETIME = CONFIG.ZOMBIE.LIFETIME_MS;
-const ZOMBIE_SPEED = CONFIG.ZOMBIE.SPEED;
+const ZOMBIE_MAX            = CONFIG.ZOMBIE.MAX_ZOMBIES;
+const ZOMBIE_FREEZE_MS      = CONFIG.ZOMBIE.FREEZE_MS;
+const ZOMBIE_HITBOX_RADIUS  = CONFIG.ZOMBIE.HITBOX_RADIUS;
+const ZOMBIE_LIFETIME       = CONFIG.ZOMBIE.LIFETIME_MS;
+const ZOMBIE_SPEED          = CONFIG.ZOMBIE.SPEED;
 
-// Bomb initial count (ramps from INITIAL_COUNT → MAX_BOMBS over maze duration)
-const BOMB_INITIAL_COUNT = CONFIG.BOMB.INITIAL_COUNT;
-
-// Gameplay feel constants
-const DAMAGE_FLASH_MS = CONFIG.GAMEPLAY.DAMAGE_FLASH_MS;
-const LOW_HEALTH_THRESHOLD = CONFIG.GAMEPLAY.LOW_HEALTH_THRESHOLD;
-const HEALTH_PACK_SPAWN_INTERVAL = CONFIG.GAMEPLAY.HEALTH_PACK_SPAWN_INTERVAL_MS;
-const HEALTH_PACK_MAX = CONFIG.GAMEPLAY.HEALTH_PACK_MAX;
-const HEALTH_PACK_HEAL = CONFIG.GAMEPLAY.HEALTH_PACK_HEAL;
-const FLOATING_TEXT_DURATION_MS = CONFIG.GAMEPLAY.FLOATING_TEXT_DURATION_MS;
-const URGENT_MAZE_TIME_S = CONFIG.GAMEPLAY.URGENT_MAZE_TIME_S;
-const SPEED_BOOST_SPAWN_INTERVAL = CONFIG.GAMEPLAY.SPEED_BOOST_SPAWN_INTERVAL_MS;
-const SPEED_BOOST_MAX = CONFIG.GAMEPLAY.SPEED_BOOST_MAX;
-const SPEED_BOOST_DURATION_MS = CONFIG.GAMEPLAY.SPEED_BOOST_DURATION_MS;
-const SPEED_BOOST_MULTIPLIER = CONFIG.GAMEPLAY.SPEED_BOOST_MULTIPLIER;
-const WEAPON_SPAWN_INTERVAL = CONFIG.GAMEPLAY.WEAPON_SPAWN_INTERVAL_MS;
-const WEAPON_MAX = CONFIG.GAMEPLAY.WEAPON_MAX;
-const RAPID_FIRE_DURATION_MS = CONFIG.GAMEPLAY.RAPID_FIRE_DURATION_MS;
-const RAPID_FIRE_RATE_MS = CONFIG.GAMEPLAY.RAPID_FIRE_RATE_MS;
-const SCATTER_DURATION_MS = CONFIG.GAMEPLAY.SCATTER_DURATION_MS;
-const SCATTER_SPREAD_DEG = CONFIG.GAMEPLAY.SCATTER_SPREAD_DEG;
+// Gameplay feel aliases
+const DAMAGE_FLASH_MS              = CONFIG.GAMEPLAY.DAMAGE_FLASH_MS;
+const LOW_HEALTH_THRESHOLD         = CONFIG.GAMEPLAY.LOW_HEALTH_THRESHOLD;
+const HEALTH_PACK_SPAWN_INTERVAL   = CONFIG.GAMEPLAY.HEALTH_PACK_SPAWN_INTERVAL_MS;
+const HEALTH_PACK_MAX              = CONFIG.GAMEPLAY.HEALTH_PACK_MAX;
+const HEALTH_PACK_HEAL             = CONFIG.GAMEPLAY.HEALTH_PACK_HEAL;
+const FLOATING_TEXT_DURATION_MS    = CONFIG.GAMEPLAY.FLOATING_TEXT_DURATION_MS;
+const URGENT_MAZE_TIME_S           = CONFIG.GAMEPLAY.URGENT_MAZE_TIME_S;
+const SPEED_BOOST_SPAWN_INTERVAL   = CONFIG.GAMEPLAY.SPEED_BOOST_SPAWN_INTERVAL_MS;
+const SPEED_BOOST_MAX              = CONFIG.GAMEPLAY.SPEED_BOOST_MAX;
+const SPEED_BOOST_DURATION_MS      = CONFIG.GAMEPLAY.SPEED_BOOST_DURATION_MS;
+const SPEED_BOOST_MULTIPLIER       = CONFIG.GAMEPLAY.SPEED_BOOST_MULTIPLIER;
+const WEAPON_SPAWN_INTERVAL        = CONFIG.GAMEPLAY.WEAPON_SPAWN_INTERVAL_MS;
+const WEAPON_MAX                   = CONFIG.GAMEPLAY.WEAPON_MAX;
+const RAPID_FIRE_DURATION_MS       = CONFIG.GAMEPLAY.RAPID_FIRE_DURATION_MS;
+const RAPID_FIRE_RATE_MS           = CONFIG.GAMEPLAY.RAPID_FIRE_RATE_MS;
+const SCATTER_DURATION_MS          = CONFIG.GAMEPLAY.SCATTER_DURATION_MS;
+const SCATTER_SPREAD_DEG           = CONFIG.GAMEPLAY.SCATTER_SPREAD_DEG;
