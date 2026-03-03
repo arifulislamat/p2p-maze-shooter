@@ -274,6 +274,7 @@
       }
 
       window.addEventListener("DOMContentLoaded", () => {
+        Voice.init();
         setTimeout(buildMazeSelector, 0);
 
         // Auto-rejoin saved session (host/guest page reload)
@@ -380,6 +381,57 @@
       </div>
     </div>
 
+    <!-- ===== Voice Toggle ===== -->
+    <button
+      id="micBtn"
+      onclick="Voice.toggle()"
+      title="Toggle Voice Chat"
+      style="padding: 6px"
+    >
+      <svg
+        id="icon-mic-off"
+        width="32"
+        height="32"
+        viewBox="0 0 28 28"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        style="vertical-align: middle"
+      >
+        <!-- Mic body -->
+        <path d="M14 3a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V7a4 4 0 0 0-4-4z"/>
+        <!-- Arc -->
+        <path d="M6 13a8 8 0 0 0 16 0"/>
+        <!-- Stand -->
+        <line x1="14" y1="21" x2="14" y2="25"/>
+        <line x1="10" y1="25" x2="18" y2="25"/>
+        <!-- Slash (disabled indicator) -->
+        <line x1="3" y1="3" x2="25" y2="25"/>
+      </svg>
+      <svg
+        id="icon-mic-on"
+        width="32"
+        height="32"
+        viewBox="0 0 28 28"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        style="vertical-align: middle; display: none"
+      >
+        <!-- Mic body -->
+        <path d="M14 3a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V7a4 4 0 0 0-4-4z"/>
+        <!-- Arc -->
+        <path d="M6 13a8 8 0 0 0 16 0"/>
+        <!-- Stand -->
+        <line x1="14" y1="21" x2="14" y2="25"/>
+        <line x1="10" y1="25" x2="18" y2="25"/>
+      </svg>
+    </button>
+
     <!-- ===== Mute Toggle ===== -->
     <button
       id="muteBtn"
@@ -448,6 +500,7 @@
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
     <script src="constants.js"></script>
     <script src="sound.js"></script>
+    <script src="voice.js"></script>
     <script src="physics.js"></script>
     <script src="renderer.js"></script>
     <script src="network.js"></script>

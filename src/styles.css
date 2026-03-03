@@ -536,6 +536,57 @@ canvas {
   color: #fff;
 }
 
+/* ---- Mic (Voice Chat) Toggle Button ---- */
+#micBtn {
+  position: fixed;
+  top: 12px;
+  right: 60px;   /* sits left of #muteBtn (40px wide + 12px right + 8px gap) */
+  z-index: 1000;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dark);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 1.4rem;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, background 0.2s;
+  user-select: none;
+  padding: 0;
+  line-height: 1;
+}
+
+#micBtn:hover {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
+/* Green border + glow when voice is actively streaming */
+#micBtn.voice-active {
+  border-color: #00ff88;
+  box-shadow: 0 0 6px rgba(0, 255, 136, 0.35);
+}
+
+/* Brief error / info toast for voice events (mic denied, etc.) */
+.voice-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.82);
+  color: #ff5555;
+  padding: 7px 18px;
+  border-radius: 6px;
+  z-index: 9999;
+  font-family: monospace;
+  font-size: 0.88rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* ---- Mute Toggle Button ---- */
 #muteBtn {
   position: fixed;

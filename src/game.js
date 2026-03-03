@@ -1378,6 +1378,22 @@ const Game = (() => {
       return;
     }
 
+    // Voice: peer has just enabled their mic and is ready to connect.
+    // Host receives this from the guest → re-initiate the call so the guest
+    // (who just armed their listener) actually gets audio.
+    if (data.type === "voice_request") {
+      // Guest just enabled their mic — host re-initiates the call regardless
+      // of whether the host's own mic is on, so the guest's audio flows to the
+      // host.  Using Network.getIsHost() instead of checking gameMode lets
+      // this work even if the message races in before startOnlineGame() fires.
+      if (Network.getIsHost()) {
+        const vPeer = Network.getPeer();
+        const vConn = Network.getConnection();
+        if (vPeer && vConn) Voice.startCall(vPeer, vConn.peer);
+      }
+      return;
+    }
+
     // Guest asked host to restart (joystick spin gesture)
     if (data.type === "restart_request" && gameMode === "online-host" && gameState === STATE.GAME_OVER) {
       restartGame();
@@ -1450,6 +1466,9 @@ const Game = (() => {
   function handleDisconnect() {
     if (isDisconnected || isReconnecting) return;
 
+    // Clean up voice call immediately when the connection drops
+    Voice.cleanup();
+
     // During active online play, try to reconnect before giving up
     if (gameMode === "online-host" || gameMode === "online-guest") {
       startReconnecting();
@@ -1498,6 +1517,18 @@ const Game = (() => {
       onConnected: () => {
         console.log("[Game] Reconnect successful!");
         stopReconnecting();
+        // Re-establish voice after reconnect.
+        // Host always re-initiates even if its mic is off (uses a silent
+        // stream) so the guest's audio has a path.  Guest always re-arms the
+        // listener and signals the host if its own mic is on.
+        const vPeer = Network.getPeer();
+        if (gameMode === "online-host") {
+          const vConn = Network.getConnection();
+          if (vPeer && vConn) Voice.startCall(vPeer, vConn.peer);
+        } else {
+          if (vPeer) Voice.listenForCall(vPeer);
+          if (Voice.isEnabled()) Network.send({ type: "voice_request" });
+        }
         // Re-send resync so guest can restore maze state without resetting match
         if (gameMode === "online-host") {
           Network.sendReliable({
@@ -1636,6 +1667,7 @@ const Game = (() => {
     clearSession();
     pendingResumeState = null;
     stopReconnecting();
+    Voice.cleanup();
     Network.disconnect();
     gameMode = "lobby";
     gameState = STATE.LOBBY;
@@ -1742,6 +1774,14 @@ const Game = (() => {
             document.getElementById("connectionStatus").textContent = "Starting game...";
             setTimeout(() => {
               startOnlineGame(true);
+              // Voice: host always initiates the call so the media channel
+              // exists for whichever side enables their mic.  startCall uses
+              // a silent stream if the host's mic is off.
+              {
+                const vPeer = Network.getPeer();
+                const vConn = Network.getConnection();
+                if (vPeer && vConn) Voice.startCall(vPeer, vConn.peer);
+              }
               Network.sendReliable({
                 type: "config",
                 mazeKey: selectedMazeKey,
@@ -1907,6 +1947,12 @@ const Game = (() => {
         document.getElementById("joinStatus").className = "status-connected";
         // Tell host we're ready to receive
         Network.sendReliable({ type: "ready" });
+        // Voice: always arm listener so we can receive host audio even without
+        // our own mic enabled.  If our mic IS enabled, also tell the host to
+        // (re-)initiate the call so our audio reaches them too.
+        const vPeer = Network.getPeer();
+        if (vPeer) Voice.listenForCall(vPeer);
+        if (Voice.isEnabled()) Network.send({ type: "voice_request" });
       },
       onData: handleNetworkData,
       onDisconnected: handleDisconnect,
@@ -1920,6 +1966,7 @@ const Game = (() => {
   function cancelOnline() {
     clearSession();
     pendingResumeState = null;
+    Voice.cleanup();
     Network.disconnect();
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("hostUI").style.display = "none";
