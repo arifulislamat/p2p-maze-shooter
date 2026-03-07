@@ -197,5 +197,12 @@ const sandstormTheme = {
     "--card-hover-bg":      "rgba(210,196,168,.92)",
     "--card-hover-border":  "rgba(0,0,0,.14)",
     "--card-shimmer-color": "rgba(255,255,255,.22)",
+
+    /* Touch controls — darkened for visibility on light background */
+    "--touch-area-bg":        "rgba(80, 50, 15, 0.18)",
+    "--joystick-base-bg":     "rgba(100, 65, 15, 0.2)",
+    "--joystick-base-border": "rgba(80, 50, 10, 0.5)",
+    "--joystick-knob-bg":     "rgba(70, 40, 5, 0.6)",
+    "--joystick-knob-border": "rgba(50, 25, 0, 0.8)",
   },
 };
