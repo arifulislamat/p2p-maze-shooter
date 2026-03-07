@@ -15,5 +15,5 @@ const ThemeRegistry = {
     [sandstormTheme.id]:    sandstormTheme,
     [cyberSakuraTheme.id]:  cyberSakuraTheme,
   },
-  defaultTheme: "retro-neon",
+  defaultTheme: "sandstorm",
 };

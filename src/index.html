@@ -308,6 +308,7 @@
       }
 
       window.addEventListener("DOMContentLoaded", () => {
+        ThemeManager.init();
         setTimeout(buildMazeSelector, 0);
         initThemeSelector();
 
@@ -483,6 +484,9 @@
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
     <!-- Theme system: load before constants.js so registry is ready at startup -->
     <script src="themes/retro-neon.js"></script>
+    <script src="themes/midnight-void.js"></script>
+    <script src="themes/sandstorm.js"></script>
+    <script src="themes/cyber-sakura.js"></script>
     <script src="themes/index.js"></script>
     <script src="core/ThemeManager.js"></script>
     <script src="constants.js"></script>
