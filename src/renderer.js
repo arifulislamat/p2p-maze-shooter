@@ -452,20 +452,25 @@ const Renderer = (() => {
   // ---- Countdown Overlay ----
   function drawCountdown(seconds) {
     captureBlurFrame();
-    drawBlurredBackground("rgba(0, 0, 0, 0.62)");
+    drawBlurredBackground("rgba(0, 0, 0, 0.55)");
     const text = seconds > 0 ? seconds.toString() : "GO!";
     const color = seconds > 0 ? COLORS.accent : COLORS.countdownGo;
+    const cy = CANVAS_HEIGHT / 2;
+    // Full-width dark band behind the number
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(0, cy - 100, CANVAS_WIDTH, 190);
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
     ctx.font = RENDER_CONFIG.FONTS.COUNTDOWN;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    // Dark stroke so the number reads on any background
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.65)";
-    ctx.lineWidth = 8;
-    ctx.strokeText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.70)";
+    ctx.lineWidth = 10;
+    ctx.strokeText(text, CANVAS_WIDTH / 2, cy);
     ctx.fillStyle = color;
-    ctx.fillText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    ctx.fillText(text, CANVAS_WIDTH / 2, cy);
+    ctx.lineJoin = "miter";
     ctx.textBaseline = "alphabetic";
   }
 
@@ -499,52 +504,62 @@ const Renderer = (() => {
   // ---- Game Over Screen ----
   function drawGameOver(winner, isGuest, p1, p2, isDraw) {
     captureBlurFrame();
-    drawBlurredBackground("rgba(0, 0, 0, 0.70)");
-    // Glass card on top of blurred background
-    const panelW = 500, panelH = 270;
-    drawGlassPanel(
-      (CANVAS_WIDTH - panelW) / 2, (CANVAS_HEIGHT - panelH) / 2,
-      panelW, panelH, 20
-    );
+    drawBlurredBackground("rgba(0, 0, 0, 0.55)");
 
     const centerX = CANVAS_WIDTH / 2;
     const centerY = CANVAS_HEIGHT / 2;
+
+    // Full-width dark band covering all text rows
+    ctx.fillStyle = "rgba(0, 0, 0, 0.60)";
+    ctx.fillRect(0, centerY - 90, CANVAS_WIDTH, 200);
 
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.70)";
 
+    // Win / draw title
+    ctx.font = RENDER_CONFIG.FONTS.GAME_OVER;
+    ctx.lineWidth = 7;
     if (isDraw) {
+      ctx.strokeText("IT'S A DRAW!", centerX, centerY - 55);
       ctx.fillStyle = COLORS.accent;
-      ctx.font = RENDER_CONFIG.FONTS.GAME_OVER;
-      ctx.fillText("IT'S A DRAW!", centerX, centerY - 60);
+      ctx.fillText("IT'S A DRAW!", centerX, centerY - 55);
     } else {
       const winColor = winner === 1 ? COLORS.p1 : COLORS.p2;
+      ctx.strokeText(`PLAYER ${winner} WINS!`, centerX, centerY - 55);
       ctx.fillStyle = winColor;
-      ctx.font = RENDER_CONFIG.FONTS.GAME_OVER;
-      ctx.fillText(`PLAYER ${winner} WINS!`, centerX, centerY - 60);
+      ctx.fillText(`PLAYER ${winner} WINS!`, centerX, centerY - 55);
     }
 
     if (p1 && p2) {
       ctx.font = RENDER_CONFIG.FONTS.HUD;
+      ctx.lineWidth = 3;
+      ctx.strokeText(`P1: ${p1.score} kills`, centerX - 90, centerY + 10);
       ctx.fillStyle = COLORS.p1;
-      ctx.fillText(`P1: ${p1.score} kills`, centerX - 80, centerY);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.70)";
-      ctx.fillText("vs", centerX, centerY);
+      ctx.fillText(`P1: ${p1.score} kills`, centerX - 90, centerY + 10);
+      ctx.strokeText("vs", centerX, centerY + 10);
+      ctx.fillStyle = "rgba(255,255,255,0.80)";
+      ctx.fillText("vs", centerX, centerY + 10);
+      ctx.strokeText(`P2: ${p2.score} kills`, centerX + 90, centerY + 10);
       ctx.fillStyle = COLORS.p2;
-      ctx.fillText(`P2: ${p2.score} kills`, centerX + 80, centerY);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.50)";
+      ctx.fillText(`P2: ${p2.score} kills`, centerX + 90, centerY + 10);
       ctx.font = RENDER_CONFIG.FONTS.LABEL;
-      ctx.fillText("TIME'S UP", centerX, centerY + 35);
+      ctx.lineWidth = 3;
+      ctx.strokeText("TIME'S UP", centerX, centerY + 45);
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.fillText("TIME'S UP", centerX, centerY + 45);
     }
-    ctx.fillStyle = "rgba(255, 255, 255, 0.80)";
     ctx.font = RENDER_CONFIG.FONTS.GAME_OVER_SUB;
-    ctx.fillText(
-      isGuest ? "Spin joystick to request restart" : "Tap / press R to restart",
-      centerX,
-      centerY + 70,
-    );
+    ctx.lineWidth = 3;
+    const restartText = isGuest ? "Spin joystick to request restart" : "Tap / press R to restart";
+    ctx.strokeText(restartText, centerX, centerY + 82);
+    ctx.fillStyle = "rgba(255,255,255,0.90)";
+    ctx.fillText(restartText, centerX, centerY + 82);
+
+    ctx.lineJoin = "miter";
     ctx.textBaseline = "alphabetic";
   }
 
@@ -573,55 +588,53 @@ const Renderer = (() => {
   // ---- Disconnect Overlay ----
   function drawDisconnected() {
     captureBlurFrame();
-    drawBlurredBackground("rgba(0, 0, 0, 0.70)");
-    const panelW = 460, panelH = 160;
-    drawGlassPanel(
-      (CANVAS_WIDTH - panelW) / 2, (CANVAS_HEIGHT - panelH) / 2,
-      panelW, panelH, 20
-    );
+    drawBlurredBackground("rgba(0, 0, 0, 0.55)");
+    // Full-width dark band
+    ctx.fillStyle = "rgba(0, 0, 0, 0.60)";
+    ctx.fillRect(0, CANVAS_HEIGHT / 2 - 55, CANVAS_WIDTH, 110);
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
-    ctx.fillStyle = COLORS.disconnectAlert;
-    ctx.font = RENDER_CONFIG.FONTS.DISCONNECT;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(
-      "OPPONENT DISCONNECTED",
-      CANVAS_WIDTH / 2,
-      CANVAS_HEIGHT / 2 - 20,
-    );
-    ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.70)";
+    ctx.font = RENDER_CONFIG.FONTS.DISCONNECT;
+    ctx.lineWidth = 6;
+    ctx.strokeText("OPPONENT DISCONNECTED", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 18);
+    ctx.fillStyle = COLORS.disconnectAlert;
+    ctx.fillText("OPPONENT DISCONNECTED", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 18);
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT_SUB;
-    ctx.fillText(
-      "Returning to lobby...",
-      CANVAS_WIDTH / 2,
-      CANVAS_HEIGHT / 2 + 28,
-    );
+    ctx.lineWidth = 3;
+    ctx.strokeText("Returning to lobby...", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 26);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.90)";
+    ctx.fillText("Returning to lobby...", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 26);
+    ctx.lineJoin = "miter";
     ctx.textBaseline = "alphabetic";
   }
 
   function drawReconnecting(secondsLeft) {
     captureBlurFrame();
-    drawBlurredBackground("rgba(0, 0, 0, 0.70)");
-    const panelW = 420, panelH = 160;
-    drawGlassPanel(
-      (CANVAS_WIDTH - panelW) / 2, (CANVAS_HEIGHT - panelH) / 2,
-      panelW, panelH, 20
-    );
+    drawBlurredBackground("rgba(0, 0, 0, 0.55)");
+    // Full-width dark band
+    ctx.fillStyle = "rgba(0, 0, 0, 0.60)";
+    ctx.fillRect(0, CANVAS_HEIGHT / 2 - 55, CANVAS_WIDTH, 110);
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
-    ctx.fillStyle = COLORS.reconnectAlert;
-    ctx.font = RENDER_CONFIG.FONTS.DISCONNECT;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("CONNECTION LOST", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.80)";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.70)";
+    ctx.font = RENDER_CONFIG.FONTS.DISCONNECT;
+    ctx.lineWidth = 6;
+    ctx.strokeText("CONNECTION LOST", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 18);
+    ctx.fillStyle = COLORS.reconnectAlert;
+    ctx.fillText("CONNECTION LOST", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 18);
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT_SUB;
-    ctx.fillText(
-      `Reconnecting\u2026 (${secondsLeft}s)`,
-      CANVAS_WIDTH / 2,
-      CANVAS_HEIGHT / 2 + 28,
-    );
+    ctx.lineWidth = 3;
+    ctx.strokeText(`Reconnecting\u2026 (${secondsLeft}s)`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 26);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.90)";
+    ctx.fillText(`Reconnecting\u2026 (${secondsLeft}s)`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 26);
+    ctx.lineJoin = "miter";
     ctx.textBaseline = "alphabetic";
   }
 
@@ -654,23 +667,29 @@ const Renderer = (() => {
     ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Full-width glass banner strip
-    const bannerH = 130;
-    const bannerY = (CANVAS_HEIGHT - bannerH) / 2;
-    drawGlassPanel(0, bannerY, CANVAS_WIDTH, bannerH, 0);
+    // Full-width dark band behind the text rows
+    ctx.fillStyle = "rgba(0, 0, 0, 0.60)";
+    ctx.fillRect(0, CANVAS_HEIGHT / 2 - 55, CANVAS_WIDTH, 105);
 
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
-    // Sub-label — uppercase muted tag above the map name
-    ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
-    ctx.font = RENDER_CONFIG.FONTS.ANNOUNCE_SUB;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("MAP CHANGED", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 30);
-    // Map name — bold accent, large
-    ctx.fillStyle = COLORS.accent;
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.70)";
+    // Sub-label
+    ctx.font = RENDER_CONFIG.FONTS.ANNOUNCE_SUB;
+    ctx.lineWidth = 3;
+    ctx.strokeText("MAP CHANGED", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 26);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.70)";
+    ctx.fillText("MAP CHANGED", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 26);
+    // Map name
     ctx.font = RENDER_CONFIG.FONTS.ANNOUNCE;
-    ctx.fillText(mazeAnnouncement, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 16);
+    ctx.lineWidth = 6;
+    ctx.strokeText(mazeAnnouncement, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+    ctx.fillStyle = COLORS.accent;
+    ctx.fillText(mazeAnnouncement, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+    ctx.lineJoin = "miter";
     ctx.restore();
     if (mazeAnnouncementTimer <= 0) mazeAnnouncement = null;
   }
