@@ -887,8 +887,8 @@ const Game = (() => {
   }
 
   function highlightSelectedMaze() {
-    document.querySelectorAll(".maze-option").forEach((el) => {
-      el.classList.toggle("selected", el.dataset.maze === selectedMazeKey);
+    document.querySelectorAll(".maze-card").forEach((el) => {
+      el.classList.toggle("sel", el.dataset.maze === selectedMazeKey);
     });
   }
 
@@ -1601,7 +1601,6 @@ const Game = (() => {
       const code = Network.getLastRoomCode();
       // Small delay to let PeerJS server expire old ID
       document.getElementById("connectionStatus").textContent = "Reconnecting room...";
-      document.getElementById("connectionStatus").style.display = "";
       setTimeout(() => setupHostRoom(code), 2000);
     }
   }
@@ -1655,6 +1654,9 @@ const Game = (() => {
     isDraw = false;
     initialized = false;
 
+    document.body.classList.add('lobby-seen');
+    const _sf = document.getElementById('site-footer');
+    if (_sf) _sf.style.display = '';
     document.getElementById("lobby").style.display = "block";
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("gameContainer").style.display = "none";
@@ -1860,8 +1862,11 @@ const Game = (() => {
     document.getElementById("connectionUI").style.display = "block";
 
     if (mode === "host") {
-      document.getElementById("hostUI").style.display = "block";
+      document.getElementById("hostUI").style.display = "flex";
       document.getElementById("joinUI").style.display = "none";
+      // Retrigger stagger entrance animation
+      const hp = document.querySelector("#hostUI .conn-panel");
+      if (hp) { hp.classList.remove("stagger"); void hp.offsetWidth; hp.classList.add("stagger"); }
       // Generate room code, show share link, and immediately start PeerJS
       const roomCode = Network.generateRoomCode();
       Network.setLastRoomCode(roomCode);
@@ -1879,7 +1884,10 @@ const Game = (() => {
       setupHostRoom(roomCode, true);
     } else {
       document.getElementById("hostUI").style.display = "none";
-      document.getElementById("joinUI").style.display = "block";
+      document.getElementById("joinUI").style.display = "flex";
+      // Retrigger stagger entrance animation
+      const jp = document.querySelector("#joinUI .conn-panel");
+      if (jp) { jp.classList.remove("stagger"); void jp.offsetWidth; jp.classList.add("stagger"); }
       document.getElementById("joinStatus").textContent = "";
       document.getElementById("roomCodeInput").value = "";
       setTimeout(() => document.getElementById("roomCodeInput").focus(), 100);
@@ -1924,6 +1932,9 @@ const Game = (() => {
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("hostUI").style.display = "none";
     document.getElementById("joinUI").style.display = "none";
+    document.body.classList.add('lobby-seen');
+    const _sf2 = document.getElementById('site-footer');
+    if (_sf2) _sf2.style.display = '';
     document.getElementById("lobby").style.display = "block";
     lobbyRetryCount = 0;
     document.getElementById("connectionStatus").style.display = "none";
@@ -2481,6 +2492,8 @@ const Game = (() => {
     document.getElementById("gameContainer").style.display = "flex";
     document.getElementById("controls-help").style.display = "block";
     document.getElementById("backBtn").style.display = "flex";
+    const sf = document.getElementById("site-footer");
+    if (sf) sf.style.display = "none";
     updateControlsHelp();
     // Release keyboard focus from any UI element (e.g. roomCodeInput in the
     // guest tab) so key events reach the game immediately.
@@ -2533,8 +2546,10 @@ const Game = (() => {
       // because it now auto-generates a new code and immediately starts PeerJS.
       document.getElementById("lobby").style.display = "none";
       document.getElementById("connectionUI").style.display = "block";
-      document.getElementById("hostUI").style.display = "block";
+      document.getElementById("hostUI").style.display = "flex";
       document.getElementById("joinUI").style.display = "none";
+      const hp2 = document.querySelector("#hostUI .conn-panel");
+      if (hp2) { hp2.classList.remove("stagger"); void hp2.offsetWidth; hp2.classList.add("stagger"); }
       Network.setLastRoomCode(s.roomCode);
       document.getElementById("roomCode").textContent = s.roomCode;
       const shareLink = document.getElementById("shareLink");

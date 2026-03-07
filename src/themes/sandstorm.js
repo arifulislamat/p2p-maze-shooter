@@ -190,5 +190,12 @@ const sandstormTheme = {
     "--shoot-btn-bg":     "#a02233",
     "--shoot-btn-border": "#cc3344",
     "--shoot-btn-text":   "#fff",
+
+    /* Maze card */
+    "--card-bg":            "rgba(221,208,184,.78)",
+    "--card-border":        "rgba(0,0,0,.07)",
+    "--card-hover-bg":      "rgba(210,196,168,.92)",
+    "--card-hover-border":  "rgba(0,0,0,.14)",
+    "--card-shimmer-color": "rgba(255,255,255,.22)",
   },
 };

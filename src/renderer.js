@@ -127,8 +127,6 @@ const Renderer = (() => {
     drawCornerAccentTo(target, 0, CANVAS_HEIGHT, 1, -1); // bottom-left
     drawCornerAccentTo(target, CANVAS_WIDTH, CANVAS_HEIGHT, -1, -1); // bottom-right
 
-    // CRT scanline overlay (subtle horizontal lines)
-    drawScanlinesTo(target);
   }
 
   function drawMaze() {
@@ -138,7 +136,9 @@ const Renderer = (() => {
       mazeCache.height = CANVAS_HEIGHT;
       drawMazeToContext(mazeCache.getContext("2d"));
     }
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(mazeCache, 0, 0);
+    ctx.imageSmoothingEnabled = true;
   }
 
   // ---- Orange Glow Corner Accents ----

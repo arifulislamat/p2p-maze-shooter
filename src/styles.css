@@ -59,6 +59,13 @@
   /* Shared animation curves */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Maze card — overridden per-theme by ThemeManager */
+  --card-bg:            rgba(14,14,30,.7);
+  --card-border:        rgba(255,255,255,.06);
+  --card-hover-bg:      rgba(20,20,42,.9);
+  --card-hover-border:  rgba(255,255,255,.12);
+  --card-shimmer-color: rgba(255,255,255,.04);
 }
 
 /* ---- Reset ---- */
@@ -70,7 +77,7 @@
 
 /* ---- Base ---- */
 body {
-  font-family: "Courier New", Courier, monospace;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
   background: var(--bg-deep);
   color: var(--text-primary);
   display: flex;
@@ -89,13 +96,7 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 999;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(0, 0, 0, 0.06) 0px,
-    rgba(0, 0, 0, 0.06) 1px,
-    transparent 1px,
-    transparent 3px
-  );
+  background: none;
   transition: opacity 0.5s;
 }
 
@@ -128,14 +129,14 @@ body::after {
   }
 }
 
-@keyframes pulseGlow {
+/* @keyframes pulseGlow {
   0%, 100% {
     box-shadow: 0 0 0 0 var(--accent-glow);
   }
   50% {
     box-shadow: 0 0 24px 4px var(--accent-glow);
   }
-}
+} */
 
 @keyframes shimmer {
   0% { background-position: 200% 0; }
@@ -145,6 +146,22 @@ body::after {
 @keyframes dotBreathe {
   0%, 100% { opacity: 0.3; transform: scale(0.8); }
   50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes selGlow {
+  0%, 100% { box-shadow: 0 0 0 1.5px var(--accent), 0 4px 20px var(--accent-glow); }
+  50%      { box-shadow: 0 0 0 1.5px var(--accent), 0 8px 40px var(--accent-glow), 0 0 50px var(--accent-glow); }
+}
+
+@keyframes cardEntrance {
+  0%   { opacity: 0; transform: translateY(20px) scale(.96); filter: blur(8px); }
+  60%  { filter: blur(1px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@keyframes labelFadeIn {
+  0%   { opacity: 0; transform: translateY(5px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 /* ---- Title ---- */
@@ -176,16 +193,22 @@ h1 {
 
 .lobby-buttons {
   display: flex;
-  gap: 1rem;
+  flex-direction: row;
+  gap: 0.75rem;
   justify-content: center;
   flex-wrap: wrap;
   animation: fadeUp 0.7s var(--ease-out) 0.4s both;
 }
 
+.lobby-buttons .btn {
+  width: min(300px, 85vw);
+  text-align: center;
+}
+
 /* ---- Buttons ---- */
 .btn {
   padding: 0.75rem 2rem;
-  font-family: "Courier New", Courier, monospace;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
   font-size: 1rem;
   font-weight: bold;
   border: 2px solid;
@@ -259,104 +282,183 @@ h1 {
 /* ---- Connection UI ---- */
 #connectionUI {
   display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 45; /* below footer (50) so footer remains visible */
+  background: var(--bg-deep);
+}
+
+/* Host/join panels: absolutely fill the overlay and center their card */
+#hostUI,
+#joinUI {
+  position: absolute;
+  inset: 0;
+  bottom: 60px; /* clear the footer */
+  align-items: center;
+  justify-content: center;
+}
+
+/* Connection panel — centered card */
+.conn-panel {
   text-align: center;
-  padding: 2rem;
+  padding: 2.5rem 3rem;
+  max-width: 520px;
+  width: 90%;
+  animation: blurReveal 0.65s var(--ease-out) both;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-#connectionUI h3 {
-  font-size: 0.85rem;
-  color: var(--accent);
+/* Stagger children entrance */
+.stagger > * {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: stgIn 0.55s ease forwards;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.08s; }
+.stagger > *:nth-child(2) { animation-delay: 0.14s; }
+.stagger > *:nth-child(3) { animation-delay: 0.20s; }
+.stagger > *:nth-child(4) { animation-delay: 0.26s; }
+.stagger > *:nth-child(5) { animation-delay: 0.32s; }
+.stagger > *:nth-child(6) { animation-delay: 0.38s; }
+
+@keyframes stgIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Small uppercase tracking label — matches lobby section headers */
+.panel-label {
+  font-size: 0.75rem;
   letter-spacing: 3px;
-  margin-bottom: 0.75rem;
   text-transform: uppercase;
-  text-shadow: 0 0 10px var(--accent-dim);
-}
-
-.online-subtitle {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  margin-bottom: 1rem;
-}
-
-#connectionUI .room-code {
-  font-size: 2.5rem;
   color: var(--accent);
-  letter-spacing: 8px;
-  margin: 1.2rem 0;
+  text-shadow: 0 0 10px var(--accent-dim);
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+}
+
+/* Room code — large accent display matching game's neon theme */
+#connectionUI .room-code {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 4.12rem;
+  font-weight: 700;
+  letter-spacing: 12px;
+  color: var(--accent);
+  margin-bottom: 0.4rem;
   user-select: all;
   text-shadow: 0 0 14px var(--accent-glow);
-  font-weight: bold;
-  animation: pulseGlow 3s ease infinite;
 }
 
-#connectionUI input {
-  padding: 0.75rem 1rem;
-  font-family: "Courier New", Courier, monospace;
-  font-size: 1.2rem;
-  background: var(--bg-panel);
-  border: 2px solid var(--accent);
-  color: var(--text-primary);
-  text-align: center;
-  letter-spacing: 4px;
-  text-transform: uppercase;
-  width: 280px;
-  outline: none;
-  transition: box-shadow 0.3s var(--ease-out), border-color 0.3s;
-}
-
-#connectionUI input:focus {
-  box-shadow: 0 0 14px var(--accent-glow);
-}
-
-#connectionUI input::placeholder {
-  color: var(--text-dim);
-  letter-spacing: 2px;
-  text-transform: uppercase;
-}
-
-/* Share link removed — using copy button only */
-
-.host-actions {
-  display: flex;
-  justify-content: center;
-  margin: 1.2rem 0;
-}
-
-.btn-copy {
-  font-size: 0.85rem;
-  padding: 0.6rem 1.5rem;
-  letter-spacing: 2px;
-}
-
-.host-divider {
-  width: 60px;
+/* Decorative line under room code */
+.room-code-line {
+  width: 55%;
   height: 1px;
-  background: var(--accent-dim);
-  margin: 1.2rem auto;
+  margin: 0 auto 0.7rem;
+  background: linear-gradient(90deg, transparent, var(--accent-dim), transparent);
 }
 
-.waiting-pulse {
-  animation: waitPulse 2s ease-in-out infinite;
-}
-
-@keyframes waitPulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
-.join-buttons {
-  display: flex;
-  gap: 0.75rem;
-  justify-content: center;
-  margin-top: 1rem;
-}
-
-#connectionStatus,
-#joinStatus {
-  margin-top: 1rem;
-  font-size: 0.9rem;
+/* Status row with animated dot */
+.host-status {
+  font-size: 0.8rem;
   color: var(--text-muted);
-  min-height: 1.2em;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--status-ok);
+  animation: dotPulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.3; box-shadow: none; }
+  50% { opacity: 1; box-shadow: 0 0 8px 2px rgba(46, 204, 113, 0.2); }
+}
+
+#connectionStatus {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+#connectionStatus.status-connected {
+  color: var(--status-ok);
+}
+
+/* Button row — side by side, width fits content */
+.panel-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+/* Override lobby min-width so buttons size to their text */
+.panel-actions .btn,
+.join-actions .btn {
+  min-width: 0;
+  width: auto;
+  white-space: nowrap;
+}
+
+/* Join screen — code input */
+.room-input {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 3.2rem;
+  font-weight: 700;
+  letter-spacing: 10px;
+  text-align: center;
+  text-transform: uppercase;
+  background: none;
+  border: none;
+  border-bottom: 1.5px solid var(--border-dark);
+  color: var(--text-primary);
+  padding: 0.65rem 1rem;
+  width: min(460px, 90%);
+  outline: none;
+  caret-color: var(--accent);
+  transition: border-color 0.3s, box-shadow 0.3s;
+  display: block;
+  margin: 0 auto;
+}
+
+.room-input::placeholder {
+  color: var(--border-dark);
+  letter-spacing: 6px;
+  font-weight: 400;
+}
+
+.room-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 2px 0 var(--accent-dim);
+}
+
+/* Join status / error */
+#joinStatus {
+  margin-top: 0.85rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-height: 1em;
+}
+
+.join-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+  width: 100%;
 }
 
 .status-connected {
@@ -438,127 +540,328 @@ canvas {
 
 #maze-grid {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
   justify-content: center;
-  max-width: 720px;
+  max-width: 920px;
 }
 
-.maze-option {
-  background: var(--bg-panel);
-  border: 2px solid var(--border-dark);
-  padding: 0.5rem;
-  cursor: pointer;
-  transition: all 0.3s var(--ease-out);
-  text-align: center;
-  width: 120px;
+/* ---- Maze Card (new design) ---- */
+.maze-card {
   position: relative;
+  width: 180px;
+  padding: 10px;
+  cursor: pointer;
+  text-align: center;
+  border: 1.5px solid var(--card-border);
+  background: var(--card-bg);
+  border-radius: 14px;
   overflow: hidden;
+  transition:
+    border-color .35s var(--ease-out),
+    background .35s var(--ease-out),
+    transform .4s var(--ease-out),
+    box-shadow .5s var(--ease-out);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
-/* Hover shimmer effect */
-.maze-option::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 33%, rgba(255,255,255,0.04) 50%, transparent 67%);
+/* Entrance animation lives on the inner body so .maze-card transform is
+   always transition-driven — prevents animation vs transition conflicts
+   when the selection class is added or removed. */
+.maze-card-body {
+  animation: cardEntrance .7s var(--ease-out) both;
+}
+
+/* Shimmer sweep layer */
+.maze-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 33%, var(--card-shimmer-color) 50%, transparent 67%);
   background-size: 200% 100%;
   opacity: 0;
-  transition: opacity 0.3s;
+  transition: opacity .3s;
+  z-index: 2;
+  pointer-events: none;
 }
 
-.maze-option:hover {
-  border-color: var(--accent);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+.maze-card:hover {
+  border-color: var(--card-hover-border);
+  background: var(--card-hover-bg);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0,0,0,.2);
 }
 
-.maze-option:hover::after {
+.maze-card:hover::before {
   opacity: 1;
   animation: shimmer 2s linear infinite;
 }
 
-.maze-option.selected {
+.maze-card.sel {
   border-color: var(--accent);
-  box-shadow: 0 0 12px var(--accent-glow), 0 4px 16px rgba(0, 0, 0, 0.2);
+  background: var(--card-hover-bg);
+  transform: translateY(-4px);
+  animation: selGlow 3s ease infinite;
 }
 
-.maze-option canvas {
+.maze-card canvas {
   display: block;
-  width: 105px;
-  height: 75px;
-  margin-bottom: 0.4rem;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  image-rendering: pixelated;
+  position: relative;
+  z-index: 1;
 }
 
-.maze-name {
-  font-size: 0.55rem;
-  color: var(--accent);
-  letter-spacing: 1px;
-  margin-bottom: 0.2rem;
-  font-weight: bold;
-  transition: color 0.3s;
-}
-
-.maze-desc {
-  font-size: 0.5rem;
+.maze-card-name {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: .6rem;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
   color: var(--text-dim);
-  line-height: 1.4;
-  transition: color 0.3s;
+  transition: color .35s var(--ease-out);
+  animation: labelFadeIn .6s var(--ease-out) .3s both;
 }
 
-.maze-option:hover .maze-desc {
+.maze-card.sel .maze-card-name {
+  color: var(--text-primary);
+}
+
+.maze-card:hover .maze-card-name {
   color: var(--text-muted);
+}
+
+.maze-card-desc {
+  font-family: 'Outfit', 'Courier New', monospace;
+  font-size: .55rem;
+  color: var(--text-dark);
+  line-height: 1.5;
+  margin-top: 2px;
+  transition: color .35s var(--ease-out);
+  animation: labelFadeIn .6s var(--ease-out) .45s both;
+}
+
+.maze-card:hover .maze-card-desc {
+  color: var(--text-dim);
+}
+
+.maze-card.sel .maze-card-desc {
+  color: var(--text-dim);
 }
 
 .maze-rotation-note {
   font-size: 0.65rem;
   color: var(--text-dim);
   margin-top: 1rem;
-  font-style: italic;
   animation: fadeUp 0.7s var(--ease-out) 0.35s both;
 }
 
-/* ---- Theme Selector ---- */
-.theme-selector-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  justify-content: center;
-  margin-top: 0.9rem;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  letter-spacing: 2px;
-  animation: fadeUp 0.7s var(--ease-out) 0.5s both;
-}
-
-.theme-selector-row label {
+.lobby-mark {
+  font-family: 'Space Mono', monospace;
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: 6px;
   text-transform: uppercase;
+  color: var(--text-20);
+  margin-bottom: 2.2rem;
 }
 
-.theme-selector-row select {
+.lobby-title {
+  font-family: 'Space Mono', monospace;
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: var(--text-100);
+  letter-spacing: -.02em;
+  line-height: 1.55;
+  margin-bottom: .5rem;
+}
+
+.lobby-sub {
+  font-size: .68rem;
+  color: var(--text-50);
+  font-weight: 300;
+  letter-spacing: .02em;
+  line-height: 1.65;
+  margin-bottom: 2rem;
+}
+
+/* ---- Settings Button ---- */
+#settingsBtn {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
   background: var(--bg-panel);
   border: 1px solid var(--border-dark);
+  border-radius: 6px;
   color: var(--text-primary);
-  font-family: "Courier New", Courier, monospace;
-  font-size: 0.7rem;
-  padding: 4px 10px;
+  width: 40px;
+  height: 40px;
   cursor: pointer;
-  outline: none;
-  letter-spacing: 1px;
-  border-radius: 3px;
-  transition: border-color 0.25s, box-shadow 0.25s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.25s var(--ease-out), background 0.25s, transform 0.35s var(--ease-spring);
+  user-select: none;
+  padding: 0;
 }
 
-.theme-selector-row select:focus {
+#settingsBtn:hover {
   border-color: var(--accent);
-  box-shadow: 0 0 8px var(--accent-dim);
+  background: var(--bg-elevated);
+  transform: rotate(35deg) scale(1.05);
 }
 
+/* ---- Settings Drawer ---- */
+@keyframes drawerSlideLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes scrimIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+#settingsModal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: rgba(0, 0, 0, 0.38);
+}
+
+#settingsModal.open {
+  display: block;
+  animation: scrimIn 0.22s ease both;
+}
+
+#settingsBox {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 300px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border-dark);
+  box-shadow: 8px 0 48px rgba(0, 0, 0, 0.45);
+  padding: 1.25rem 1.5rem 2rem;
+  overflow-y: auto;
+  animation: drawerSlideLeft 0.28s var(--ease-out) both;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.4rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-title {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-shadow: 0 0 12px var(--accent-glow);
+}
+
+#settingsClose {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  transition: color 0.2s, background 0.2s;
+  line-height: 1;
+}
+
+#settingsClose:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.settings-section-label {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 0.7rem;
+}
+
+#settings-theme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.theme-card {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+  text-align: left;
+  width: 100%;
+}
+
+.theme-card:hover {
+  border-color: var(--t-accent, var(--accent));
+  color: var(--text-primary);
+}
+
+.theme-card.active {
+  border-color: var(--t-accent, var(--accent));
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--t-accent, var(--accent));
+}
+
+.theme-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--t-accent, var(--accent));
+  flex-shrink: 0;
+  box-shadow: 0 0 6px var(--t-accent, var(--accent));
+}
+
+/* .author-credit is only used by #gameplay-author (portrait mobile gameplay) */
 .author-credit {
   font-size: 0.7rem;
   color: var(--text-dim);
-  margin-top: 1.5rem;
-  animation: fadeUp 0.7s var(--ease-out) 0.6s both;
+}
+
+/* ---- Suppress entrance animations on lobby return visits ---- */
+/* Added when returnToLobby()/cancelOnline() is called — skips the blur/fade-in */
+body.lobby-seen h1,
+body.lobby-seen #lobby,
+body.lobby-seen #lobby p,
+body.lobby-seen .lobby-buttons,
+body.lobby-seen #maze-selector,
+body.lobby-seen .maze-card-body,
+body.lobby-seen .maze-card-name,
+body.lobby-seen .maze-card-desc,
+body.lobby-seen .maze-rotation-note {
+  animation: none;
 }
 
 .author-credit a {
@@ -575,6 +878,64 @@ canvas {
 /* Hidden on desktop; shown inside portrait mobile media query */
 #gameplay-author {
   display: none;
+}
+
+/* ---- Global Site Footer ---- */
+#site-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-deep);
+  padding: 0.45rem 1.5rem 0.55rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.footer-meta {
+  font-size: 0.52rem;
+  color: var(--text-dim);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+.footer-links {
+  font-size: 0.58rem;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.footer-links a,
+.footer-meta a {
+  color: var(--author-link);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.footer-links a:hover,
+.footer-meta a:hover {
+  color: var(--overlay-text);
+  text-decoration: underline;
+}
+
+.footer-sep {
+  color: var(--text-dim);
+  opacity: 0.35;
+  margin: 0 0.45rem;
+  user-select: none;
 }
 
 /* ---- Controls Help ---- */
@@ -679,7 +1040,7 @@ canvas {
 
 #leaveCancel {
   padding: 0.5rem 1.4rem;
-  font-family: "Courier New", Courier, monospace;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
   font-size: 0.85rem;
   font-weight: bold;
   border: 1px solid var(--border-dark);
@@ -699,7 +1060,7 @@ canvas {
 
 #leaveConfirm {
   padding: 0.5rem 1.4rem;
-  font-family: "Courier New", Courier, monospace;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
   font-size: 0.85rem;
   font-weight: bold;
   border: 1px solid var(--status-error);
@@ -722,7 +1083,7 @@ canvas {
 #muteBtn {
   position: fixed;
   top: 12px;
-  right: 12px;
+  right: 60px;
   z-index: 1000;
   background: var(--bg-panel);
   border: 1px solid var(--border-dark);
@@ -758,37 +1119,71 @@ canvas {
     display: none !important;
   }
 
-  /* Lobby fills full viewport height so the author footer can sit at the bottom */
+  /* Lobby fills full viewport height; add bottom padding for fixed footer */
   #lobby {
     display: flex;
     flex-direction: column;
     align-items: center;
     min-height: 100svh;
-    padding: 1.2rem 1rem 0.75rem;
+    padding: 1.2rem 1rem 4rem;
     width: 100%;
   }
 
-  .author-credit {
-    margin-top: auto;
-    padding-top: 1rem;
-    padding-bottom: 0.5rem;
+  /* Hide site footer when game is active (JS also sets display:none; this covers
+     the rare case where JS hasn't run yet on mobile) */
+  #gameContainer:not([style*="none"]) ~ #site-footer {
+    display: none !important;
+  }
+
+  /* Compact footer on mobile */
+  #site-footer {
+    padding: 0.35rem 1rem 0.45rem;
+  }
+
+  .footer-meta {
+    display: none;
+  }
+
+  /* Settings drawer slides from the top on mobile */
+  @keyframes drawerSlideTop {
+    from { transform: translateY(-100%); }
+    to   { transform: translateY(0); }
+  }
+
+  #settingsBox {
+    left: 0;
+    right: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    max-height: 80dvh;
+    border-right: none;
+    border-bottom: 1px solid var(--border-dark);
+    box-shadow: 0 8px 48px rgba(0, 0, 0, 0.45);
+    animation: drawerSlideTop 0.28s var(--ease-out) both;
+  }
+
+  #settings-theme-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   }
 
   /* Maze carousel */
   #maze-selector {
     margin: 0.6rem 0;
     width: 100%;
+    overflow: visible;
   }
 
   #maze-grid {
     flex-wrap: nowrap;
     overflow-x: auto;
+    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x mandatory;
     justify-content: flex-start;
     max-width: 100vw;
-    padding: 0.4rem 10vw 0.6rem;
-    gap: 0.8rem;
+    padding: 1.2rem 20vw;
+    gap: 0.5rem;
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
@@ -797,14 +1192,27 @@ canvas {
     display: none;
   }
 
-  .maze-option {
+  .maze-card {
     flex-shrink: 0;
-    width: 72vw;
-    max-width: 220px;
+    width: 60vw;
+    max-width: 280px;
     scroll-snap-align: center;
+    transform: scale(0.95);
+    opacity: 0.9;
+    transition:
+      border-color .35s var(--ease-out),
+      background .35s var(--ease-out),
+      transform .35s var(--ease-out),
+      opacity .35s var(--ease-out),
+      box-shadow .5s var(--ease-out);
   }
 
-  .maze-option canvas {
+  .maze-card.sel {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  .maze-card canvas {
     width: 100%;
     height: auto;
   }
@@ -916,5 +1324,35 @@ canvas {
     pointer-events: none;
     transform: translate(0px, 0px);
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  }
+
+  /* ---- Connection UI mobile overrides ---- */
+  .conn-panel {
+    padding: 1.5rem 1.2rem;
+    max-width: 100%;
+    width: 95%;
+  }
+
+  #connectionUI .room-code {
+    font-size: clamp(2rem, 9vw, 4.12rem);
+    letter-spacing: clamp(4px, 2vw, 12px);
+  }
+
+  .room-input {
+    font-size: clamp(1.6rem, 7vw, 3.2rem);
+    letter-spacing: clamp(4px, 2vw, 10px);
+    width: min(460px, 95%);
+  }
+
+  .panel-actions,
+  .join-actions {
+    flex-wrap: wrap;
+  }
+
+  .panel-actions .btn,
+  .join-actions .btn {
+    flex: 1 1 auto;
+    min-width: 120px;
+    text-align: center;
   }
 }

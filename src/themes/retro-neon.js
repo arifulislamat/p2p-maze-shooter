@@ -228,5 +228,12 @@ const retroNeonTheme = {
     "--shoot-btn-bg":     "#c0392b",
     "--shoot-btn-border": "#e74c3c",
     "--shoot-btn-text":   "#fff",
+
+    /* Maze card */
+    "--card-bg":            "rgba(14,14,30,.7)",
+    "--card-border":        "rgba(255,255,255,.06)",
+    "--card-hover-bg":      "rgba(20,20,42,.9)",
+    "--card-hover-border":  "rgba(255,255,255,.12)",
+    "--card-shimmer-color": "rgba(255,255,255,.04)",
   },
 };

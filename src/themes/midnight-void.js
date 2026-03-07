@@ -188,5 +188,12 @@ const midnightVoidTheme = {
     "--shoot-btn-bg":     "#a0204e",
     "--shoot-btn-border": "#ff2d6a",
     "--shoot-btn-text":   "#fff",
+
+    /* Maze card */
+    "--card-bg":            "rgba(10,10,30,.74)",
+    "--card-border":        "rgba(123,92,255,.1)",
+    "--card-hover-bg":      "rgba(16,16,46,.92)",
+    "--card-hover-border":  "rgba(123,92,255,.22)",
+    "--card-shimmer-color": "rgba(123,92,255,.06)",
   },
 };
