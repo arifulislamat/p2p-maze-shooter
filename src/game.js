@@ -289,7 +289,7 @@ const Game = (() => {
       if (dist <= BOMB_BLAST_RADIUS) {
         player.health -= BOMB_BLAST_DAMAGE;
         player.damageFlashTimer = DAMAGE_FLASH_MS;
-        addFloatingText(`-${BOMB_BLAST_DAMAGE}`, pcx, player.y - 8, "#ffaa00");
+        addFloatingText(`-${BOMB_BLAST_DAMAGE}`, pcx, player.y - 8, COLORS.bomb);
         if (player.health <= 0) {
           // Bomb kill — award the other player
           const killer = player.id === 1 ? p2 : p1;
@@ -575,7 +575,7 @@ const Game = (() => {
         const pcy = player.y + PLAYER_SIZE / 2;
         if (Math.hypot(hp.x - pcx, hp.y - pcy) <= PLAYER_SIZE * 1.2) {
           player.health = Math.min(PLAYER_HEALTH, player.health + HEALTH_PACK_HEAL);
-          addFloatingText(`+${HEALTH_PACK_HEAL} HP`, pcx, player.y - 20, "#00ff88");
+          addFloatingText(`+${HEALTH_PACK_HEAL} HP`, pcx, player.y - 20, COLORS.floatingHeal);
           Sound.play("respawn", pcx, pcy);
           healthPacks.splice(i, 1);
           picked = true;
@@ -609,7 +609,7 @@ const Game = (() => {
         const pcy = player.y + PLAYER_SIZE / 2;
         if (Math.hypot(sp.x - pcx, sp.y - pcy) <= PLAYER_SIZE * 1.2) {
           player.speedBoostTimer = SPEED_BOOST_DURATION_MS;
-          addFloatingText(`⚡ SPEED!`, pcx, player.y - 20, "#ffff00");
+          addFloatingText(`⚡ SPEED!`, pcx, player.y - 20, COLORS.floatingSpeed);
           Sound.play("respawn", pcx, pcy);
           speedBoostPickups.splice(i, 1);
           picked = true;
@@ -645,7 +645,7 @@ const Game = (() => {
           player.weaponType = wp.type;
           player.weaponTimer = wp.type === 'rapidfire' ? RAPID_FIRE_DURATION_MS : SCATTER_DURATION_MS;
           const label = wp.type === 'rapidfire' ? '⚡ RAPID FIRE' : '💥 SCATTER';
-          addFloatingText(label, pcx, player.y - 20, wp.type === 'rapidfire' ? '#00aaff' : '#ff6600');
+          addFloatingText(label, pcx, player.y - 20, wp.type === 'rapidfire' ? COLORS.floatingWeaponRapid : COLORS.floatingWeaponScatter);
           Sound.play("respawn", pcx, pcy);
           weaponPickups.splice(i, 1);
           picked = true;
@@ -687,7 +687,7 @@ const Game = (() => {
           zombies.splice(zi, 1);
           bullets.splice(i, 1);
           Sound.play("hit", z.x, z.y);
-          addFloatingText("ZOMBIE!", z.x, z.y - 12, "#44ff44");
+          addFloatingText("ZOMBIE!", z.x, z.y - 12, COLORS.zombie);
           hitZombie = true;
           break;
         }
@@ -703,7 +703,7 @@ const Game = (() => {
         bullets.splice(i, 1);
         Sound.play("hit", target.x, target.y);
         addFloatingText("-1", target.x + PLAYER_SIZE / 2, target.y - 8,
-          target.id === 1 ? "#00d4ff" : "#ff4444");
+          target.id === 1 ? COLORS.p1 : COLORS.p2);
 
         // Check if killed
         if (target.health <= 0) {
@@ -723,10 +723,10 @@ const Game = (() => {
     Sound.play("death", deadPlayer.x, deadPlayer.y);
     // Kill-feed notifications
     addFloatingText("ELIMINATED!",
-      deadPlayer.x + PLAYER_SIZE / 2, deadPlayer.y - 24, "#ffffff");
+      deadPlayer.x + PLAYER_SIZE / 2, deadPlayer.y - 24, COLORS.white);
     addFloatingText("+1 KILL",
       killer.x + PLAYER_SIZE / 2, killer.y - 24,
-      killer.id === 1 ? "#00d4ff" : "#ff4444");
+      killer.id === 1 ? COLORS.p1 : COLORS.p2);
 
     // Check win
     if (killer.score >= WIN_SCORE) {
@@ -887,8 +887,8 @@ const Game = (() => {
   }
 
   function highlightSelectedMaze() {
-    document.querySelectorAll(".maze-option").forEach((el) => {
-      el.classList.toggle("selected", el.dataset.maze === selectedMazeKey);
+    document.querySelectorAll(".maze-card").forEach((el) => {
+      el.classList.toggle("sel", el.dataset.maze === selectedMazeKey);
     });
   }
 
@@ -1601,7 +1601,6 @@ const Game = (() => {
       const code = Network.getLastRoomCode();
       // Small delay to let PeerJS server expire old ID
       document.getElementById("connectionStatus").textContent = "Reconnecting room...";
-      document.getElementById("connectionStatus").style.display = "";
       setTimeout(() => setupHostRoom(code), 2000);
     }
   }
@@ -1655,6 +1654,9 @@ const Game = (() => {
     isDraw = false;
     initialized = false;
 
+    document.body.classList.add('lobby-seen');
+    const _sf = document.getElementById('site-footer');
+    if (_sf) _sf.style.display = '';
     document.getElementById("lobby").style.display = "block";
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("gameContainer").style.display = "none";
@@ -1860,8 +1862,11 @@ const Game = (() => {
     document.getElementById("connectionUI").style.display = "block";
 
     if (mode === "host") {
-      document.getElementById("hostUI").style.display = "block";
+      document.getElementById("hostUI").style.display = "flex";
       document.getElementById("joinUI").style.display = "none";
+      // Retrigger stagger entrance animation
+      const hp = document.querySelector("#hostUI .conn-panel");
+      if (hp) { hp.classList.remove("stagger"); void hp.offsetWidth; hp.classList.add("stagger"); }
       // Generate room code, show share link, and immediately start PeerJS
       const roomCode = Network.generateRoomCode();
       Network.setLastRoomCode(roomCode);
@@ -1879,7 +1884,10 @@ const Game = (() => {
       setupHostRoom(roomCode, true);
     } else {
       document.getElementById("hostUI").style.display = "none";
-      document.getElementById("joinUI").style.display = "block";
+      document.getElementById("joinUI").style.display = "flex";
+      // Retrigger stagger entrance animation
+      const jp = document.querySelector("#joinUI .conn-panel");
+      if (jp) { jp.classList.remove("stagger"); void jp.offsetWidth; jp.classList.add("stagger"); }
       document.getElementById("joinStatus").textContent = "";
       document.getElementById("roomCodeInput").value = "";
       setTimeout(() => document.getElementById("roomCodeInput").focus(), 100);
@@ -1924,6 +1932,9 @@ const Game = (() => {
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("hostUI").style.display = "none";
     document.getElementById("joinUI").style.display = "none";
+    document.body.classList.add('lobby-seen');
+    const _sf2 = document.getElementById('site-footer');
+    if (_sf2) _sf2.style.display = '';
     document.getElementById("lobby").style.display = "block";
     lobbyRetryCount = 0;
     document.getElementById("connectionStatus").style.display = "none";
@@ -2070,12 +2081,12 @@ const Game = (() => {
     // Damage flash: show for the local player only
     // (host = P1, guest = P2, local = both)
     if (gameMode === "online-host") {
-      Renderer.drawDamageFlash(p1, "0,180,255");
+      Renderer.drawDamageFlash(p1, COLORS.p1RGB);
     } else if (gameMode === "online-guest") {
-      Renderer.drawDamageFlash(p2, "255,60,60");
+      Renderer.drawDamageFlash(p2, COLORS.p2RGB);
     } else {
-      Renderer.drawDamageFlash(p1, "0,180,255");
-      Renderer.drawDamageFlash(p2, "255,60,60");
+      Renderer.drawDamageFlash(p1, COLORS.p1RGB);
+      Renderer.drawDamageFlash(p2, COLORS.p2RGB);
     }
     Renderer.drawLowHealthVignette(p1, p2);
 
@@ -2167,6 +2178,11 @@ const Game = (() => {
   function init() {
     if (initialized) return; // guard against double-wiring event listeners
     initialized = true;
+
+    // Apply saved theme (or default) before any rendering starts
+    ThemeManager.init();
+    // Invalidate maze cache whenever the theme changes so colors redraw
+    document.addEventListener("themechange", () => Renderer.invalidateMazeCache());
 
     canvas = document.getElementById("gameCanvas");
     ctx = canvas.getContext("2d");
@@ -2427,7 +2443,7 @@ const Game = (() => {
 
     if (gameMode === "online-host") {
       help.innerHTML = `
-        <span><strong style="color: #00d4ff">You (P1):</strong>
+        <span><strong style="color: ${COLORS.p1}">You (P1):</strong>
           <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span>
           or <span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span> move ·
           <span class="key">Space</span> shoot</span>
@@ -2435,7 +2451,7 @@ const Game = (() => {
       `;
     } else if (gameMode === "online-guest") {
       help.innerHTML = `
-        <span><strong style="color: #ff4444">You (P2):</strong>
+        <span><strong style="color: ${COLORS.p2}">You (P2):</strong>
           <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span>
           or <span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span> move ·
           <span class="key">Space</span> shoot</span>
@@ -2476,6 +2492,8 @@ const Game = (() => {
     document.getElementById("gameContainer").style.display = "flex";
     document.getElementById("controls-help").style.display = "block";
     document.getElementById("backBtn").style.display = "flex";
+    const sf = document.getElementById("site-footer");
+    if (sf) sf.style.display = "none";
     updateControlsHelp();
     // Release keyboard focus from any UI element (e.g. roomCodeInput in the
     // guest tab) so key events reach the game immediately.
@@ -2528,8 +2546,10 @@ const Game = (() => {
       // because it now auto-generates a new code and immediately starts PeerJS.
       document.getElementById("lobby").style.display = "none";
       document.getElementById("connectionUI").style.display = "block";
-      document.getElementById("hostUI").style.display = "block";
+      document.getElementById("hostUI").style.display = "flex";
       document.getElementById("joinUI").style.display = "none";
+      const hp2 = document.querySelector("#hostUI .conn-panel");
+      if (hp2) { hp2.classList.remove("stagger"); void hp2.offsetWidth; hp2.classList.add("stagger"); }
       Network.setLastRoomCode(s.roomCode);
       document.getElementById("roomCode").textContent = s.roomCode;
       const shareLink = document.getElementById("shareLink");

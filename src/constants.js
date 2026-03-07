@@ -83,35 +83,98 @@ const CONFIG = {
     SCATTER_SPREAD_DEG: 25,           // angle between each scatter bullet
   },
   COLORS: {
-    background: "#0a0a1a",
-    border: "#2a2a4a",
-    wall: "#2d2d4a",
-    wallStroke: "#4a4a6a",
-    wallInner: "rgba(100,100,160,0.2)",
-    path: "#0a0a1a",
-    p1: "#00d4ff",
-    p1Dark: "#0099bb",
-    p1Spawn: "#003344",
-    p1SpawnBorder: "#00d4ff",
-    p2: "#ff4444",
-    p2Dark: "#cc2222",
-    p2Spawn: "#330011",
-    p2SpawnBorder: "#ff4444",
-    zombie: "#44ff44",
-    zombieGlow: "#0a1a0a",
-    bomb: "#ffaa00",
-    bombGlow: "#1a1500",
-    bullet: "#f39c12",
-    bulletStroke: "#e67e22",
-    bulletP1: "#88ffff",
-    bulletP1Glow: "#00ffff",
-    bulletP2: "#ff8888",
-    bulletP2Glow: "#ff4444",
-    healthGreen: "#2ecc71",
-    healthRed: "#e74c3c",
-    healthBg: "#333333",
-    hudText: "#ccccee",
-    white: "#ffffff",
+    // --- World / map ---
+    background:     "#0a0a1a",
+    border:         "#2a2a4a",
+    wall:           "#2d2d4a",
+    wallStroke:     "#4a4a6a",
+    wallInner:      "rgba(100,100,180,0.2)",   // inner inset border on wall tiles
+    wallShadowDark: "rgba(0,0,0,0.15)",        // bottom-right depth shadow on walls
+    wallHighlight:  "rgba(100,100,160,0.15)",  // top-left highlight on walls
+    gridLine:       "#1a1a2e",                 // subtle cell grid overlay
+    path:           "#0a0a1a",
+
+    // --- Players ---
+    p1:             "#00d4ff",
+    p1Dark:         "#0099bb",
+    p1Spawn:        "#003344",
+    p1SpawnBorder:  "#00d4ff",
+    p2:             "#ff4444",
+    p2Dark:         "#cc2222",
+    p2Spawn:        "#330011",
+    p2SpawnBorder:  "#ff4444",
+    // Raw RGB triplets for use inside rgba() template literals
+    p1RGB:          "0,180,255",
+    p2RGB:          "255,60,60",
+
+    // --- Zombies ---
+    zombie:         "#44ff44",
+    zombieGlow:     "#0a1a0a",
+
+    // --- Bombs ---
+    bomb:           "#ffaa00",
+    bombGlow:       "#1a1500",
+    bombBody:       "#333",       // bomb body fill circle
+    bombSpark:      "#ffff88",    // fuse spark dot
+    bombFuseLow:    "#ff3333",    // timer text when < 33% fuse left
+
+    // --- Bullets ---
+    bullet:         "#f39c12",
+    bulletStroke:   "#e67e22",
+    bulletP1:       "#88ffff",
+    bulletP1Glow:   "#00ffff",
+    bulletP2:       "#ff8888",
+    bulletP2Glow:   "#ff4444",
+    bulletHotWhite: "rgba(255,255,255,0.7)", // hot-white center streak
+
+    // --- HUD / UI ---
+    healthGreen:    "#2ecc71",
+    healthRed:      "#e74c3c",
+    healthBg:       "#333333",
+    hudText:        "#ccccee",
+    white:          "#ffffff",
+    accent:         "#ff6b00",    // corner accents, map name glow, announce glow
+    textLight:      "#aaa",       // light secondary text
+    textMuted:      "#888",       // muted secondary text
+    textDim:        "#666",       // less prominent text
+
+    // --- Overlays ---
+    overlayHudBg:     "rgba(0,0,0,0.5)",    // semi-transparent HUD bar
+    overlayModal:     "rgba(0,0,0,0.85)",   // disconnect / game-over modals
+    overlayCountdown: "rgba(0,0,0,0.7)",    // countdown backdrop
+
+    // --- Countdown ---
+    countdownGo:    "#44ff44",    // "GO!" text glow color
+
+    // --- Explosions ---
+    explosionBase:         "#ff6400",      // danger-zone indicator circle
+    explosionParticle:     "#ff7700",      // inner fireball fill
+    explosionLight:        "#ffffc8",      // hot white center
+    explosionShockwaveRGB: "255,150,0",    // shockwave ring rgb triplet
+    explosionSparkRGB:     "255,255,100",  // scattered sparks rgb triplet
+
+    // --- Freeze effect ---
+    freezeOverlay:  "#88ddff",    // icy blue overlay circle
+    freezeStroke:   "#aaeeff",    // icy border stroke
+    freezeGlow:     "#00ccff",    // glow shadow + "FROZEN" text
+
+    // --- Speed boost pickup ---
+    speedBoostYellow: "#ffe600",  // lightning bolt fill + ground circle
+    speedBoostStroke: "#fff8a0",  // lightning bolt outline
+
+    // --- Weapon pickups ---
+    weaponRapidfire: "#33aaff",   // rapid-fire pickup (#3af)
+    weaponScatter:   "#ff9933",   // scatter pickup (#f93)
+
+    // --- Online / connection ---
+    disconnectAlert: "#ff4444",   // disconnect overlay glow / text
+    reconnectAlert:  "#ffaa00",   // reconnecting overlay glow / text
+
+    // --- Floating event texts ---
+    floatingHeal:           "#00ff88",
+    floatingSpeed:          "#ffff00",
+    floatingWeaponRapid:    "#00aaff",
+    floatingWeaponScatter:  "#ff6600",
   },
 };
 

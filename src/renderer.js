@@ -12,17 +12,20 @@ const Renderer = (() => {
       HEALTH_HEIGHT: 8,
     },
     FONTS: {
-      HUD:           "bold 16px Courier New",
-      HUD_SMALL:     "10px Courier New",
-      LABEL:         "bold 12px Courier New",
-      COUNTDOWN:     "bold 120px Courier New",
-      RESPAWN:       "bold 20px Courier New",
-      GAME_OVER:     "bold 60px Courier New",
-      GAME_OVER_SUB: "16px Courier New",
-      DISCONNECT:    "bold 36px Courier New",
-      DISCONNECT_SUB:"16px Courier New",
-      ANNOUNCE:      "bold 36px Courier New",
-      ANNOUNCE_SUB:  "14px Courier New",
+      HUD:              "bold 16px Courier New",
+      HUD_SMALL:        "10px Courier New",
+      LABEL:            "bold 12px Courier New",
+      COUNTDOWN:        "bold 120px Courier New",
+      RESPAWN:          "bold 20px Courier New",
+      GAME_OVER:        "bold 60px Courier New",
+      GAME_OVER_SUB:    "16px Courier New",
+      DISCONNECT:       "bold 36px Courier New",
+      DISCONNECT_SUB:   "16px Courier New",
+      ANNOUNCE:         "bold 36px Courier New",
+      ANNOUNCE_SUB:     "14px Courier New",
+      BOMB_TIMER:       "bold 14px Courier New",
+      IN_WORLD_LABEL:   "bold 10px Courier New",
+      HEALTH_PACK_LABEL:"bold 11px Courier New",
     },
     EFFECTS: {
       CORNER_ACCENT_LEN: 16,
@@ -49,6 +52,15 @@ const Renderer = (() => {
     mazeCache = null;
   }
 
+  /**
+   * Called by ThemeManager.apply() to patch font strings when a theme changes.
+   * fontsObj keys must match RENDER_CONFIG.FONTS key names (e.g. "HUD", "LABEL").
+   */
+  function applyThemeFonts(fontsObj) {
+    if (!fontsObj) return;
+    Object.assign(RENDER_CONFIG.FONTS, fontsObj);
+  }
+
   // ---- Background & Arena ----
   function drawArena() {
     // Dark background
@@ -70,25 +82,25 @@ const Renderer = (() => {
 
         if (cell === CELL_WALL) {
           // Retro depth effect on wall tiles
-          target.fillStyle = "#2d2d4a";
+          target.fillStyle = COLORS.wall;
           target.fillRect(x, y, CELL_W, CELL_H);
 
-          target.strokeStyle = "#4a4a6a";
+          target.strokeStyle = COLORS.wallStroke;
           target.lineWidth = 1;
           target.strokeRect(x + 0.5, y + 0.5, CELL_W - 1, CELL_H - 1);
 
           // Inner rectangle for a subtle inset look
-          target.strokeStyle = "rgba(100, 100, 180, 0.2)";
+          target.strokeStyle = COLORS.wallInner;
           target.lineWidth = 1;
           target.strokeRect(x + 3, y + 3, CELL_W - 6, CELL_H - 6);
 
           // Bottom-right shadow
-          target.fillStyle = "rgba(0, 0, 0, 0.15)";
+          target.fillStyle = COLORS.wallShadowDark;
           target.fillRect(x + CELL_W - 3, y + 1, 3, CELL_H - 1);
           target.fillRect(x + 1, y + CELL_H - 3, CELL_W - 1, 3);
 
           // Top-left highlight
-          target.fillStyle = "rgba(100, 100, 160, 0.15)";
+          target.fillStyle = COLORS.wallHighlight;
           target.fillRect(x + 1, y + 1, 3, CELL_H - 2);
           target.fillRect(x + 1, y + 1, CELL_W - 2, 3);
         } else {
@@ -98,14 +110,14 @@ const Renderer = (() => {
         }
 
         // Subtle grid overlay on every cell
-        target.strokeStyle = "#1a1a2e";
+        target.strokeStyle = COLORS.gridLine;
         target.lineWidth = 1;
         target.strokeRect(x + 0.5, y + 0.5, CELL_W - 1, CELL_H - 1);
       }
     }
 
     // Arena border — dark outer border
-    target.strokeStyle = "#2a2a4a";
+    target.strokeStyle = COLORS.border;
     target.lineWidth = 3;
     target.strokeRect(1.5, 1.5, CANVAS_WIDTH - 3, CANVAS_HEIGHT - 3);
 
@@ -115,8 +127,6 @@ const Renderer = (() => {
     drawCornerAccentTo(target, 0, CANVAS_HEIGHT, 1, -1); // bottom-left
     drawCornerAccentTo(target, CANVAS_WIDTH, CANVAS_HEIGHT, -1, -1); // bottom-right
 
-    // CRT scanline overlay (subtle horizontal lines)
-    drawScanlinesTo(target);
   }
 
   function drawMaze() {
@@ -126,13 +136,15 @@ const Renderer = (() => {
       mazeCache.height = CANVAS_HEIGHT;
       drawMazeToContext(mazeCache.getContext("2d"));
     }
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(mazeCache, 0, 0);
+    ctx.imageSmoothingEnabled = true;
   }
 
   // ---- Orange Glow Corner Accents ----
   function drawCornerAccentTo(target, cx, cy, dirX, dirY) {
     const len = RENDER_CONFIG.EFFECTS.CORNER_ACCENT_LEN;
-    target.strokeStyle = "#ff6b00";
+    target.strokeStyle = COLORS.accent;
     target.lineWidth = 2;
     target.globalAlpha = 0.5;
     target.beginPath();
@@ -273,7 +285,7 @@ const Renderer = (() => {
 
       // Hot-white center streak
       ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.fillStyle = COLORS.bulletHotWhite;
       ctx.fillRect(-BULLET_WIDTH / 2 + 2, -1, BULLET_WIDTH - 4, 2);
 
       ctx.restore();
@@ -283,7 +295,7 @@ const Renderer = (() => {
   // ---- HUD (Top Bar) ----
   function drawHUD(p1, p2, mazeTimeLeft, matchTimeLeft, mazesPlayed) {
     // Semi-transparent HUD background
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillStyle = COLORS.overlayHudBg;
     ctx.fillRect(0, 0, CANVAS_WIDTH, RENDER_CONFIG.HUD.HEIGHT);
 
     const hudY = RENDER_CONFIG.HUD.PADDING_Y;
@@ -322,9 +334,9 @@ const Renderer = (() => {
     );
 
     // Center — maze name + map counter + match timer
-    ctx.shadowColor = "#ff6b00";
+    ctx.shadowColor = COLORS.accent;
     ctx.shadowBlur = 4;
-    ctx.fillStyle = "#ff6b00";
+    ctx.fillStyle = COLORS.accent;
     ctx.textAlign = "center";
     ctx.font = RENDER_CONFIG.FONTS.LABEL;
     const mapLabel = `${activeMaze.name}  (${mazesPlayed + 1}/${MAZE_KEYS.length})`;
@@ -336,7 +348,7 @@ const Renderer = (() => {
     if (mazeTimeLeft != null) {
       const mzMins = Math.floor(mazeTimeLeft / 60);
       const mzSecs = Math.floor(mazeTimeLeft % 60);
-      ctx.fillStyle = "#aaa";
+      ctx.fillStyle = COLORS.textLight;
       ctx.fillText(
         `Next map: ${mzMins}:${mzSecs.toString().padStart(2, "0")}`,
         CANVAS_WIDTH / 2,
@@ -348,7 +360,7 @@ const Renderer = (() => {
       const mtMins = Math.floor(matchTimeLeft / 60);
       const mtSecs = Math.floor(matchTimeLeft % 60);
       const urgent = matchTimeLeft <= 30;
-      ctx.fillStyle = urgent ? "#ff4444" : "#666";
+      ctx.fillStyle = urgent ? COLORS.disconnectAlert : COLORS.textDim;
       ctx.fillText(
         `Match: ${mtMins}:${mtSecs.toString().padStart(2, "0")}`,
         CANVAS_WIDTH / 2,
@@ -359,11 +371,11 @@ const Renderer = (() => {
 
   // ---- Countdown Overlay ----
   function drawCountdown(seconds) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillStyle = COLORS.overlayCountdown;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     const text = seconds > 0 ? seconds.toString() : "GO!";
-    const glowColor = seconds > 0 ? "#ff6b00" : "#44ff44";
+    const glowColor = seconds > 0 ? COLORS.accent : COLORS.countdownGo;
 
     ctx.shadowColor = glowColor;
     ctx.shadowBlur = 30;
@@ -395,9 +407,9 @@ const Renderer = (() => {
     ctx.globalAlpha = 1;
 
     // Countdown text with glow
-    ctx.shadowColor = "#ffffff";
+    ctx.shadowColor = COLORS.white;
     ctx.shadowBlur = 6;
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = COLORS.white;
     ctx.font = RENDER_CONFIG.FONTS.RESPAWN;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -408,7 +420,7 @@ const Renderer = (() => {
 
   // ---- Game Over Screen ----
   function drawGameOver(winner, isGuest, p1, p2, isDraw) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.fillStyle = COLORS.overlayModal;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     const centerX = CANVAS_WIDTH / 2;
@@ -416,9 +428,9 @@ const Renderer = (() => {
 
     if (isDraw) {
       // Draw scenario
-      ctx.shadowColor = "#ff6b00";
+      ctx.shadowColor = COLORS.accent;
       ctx.shadowBlur = 20;
-      ctx.fillStyle = "#ff6b00";
+      ctx.fillStyle = COLORS.accent;
       ctx.font = RENDER_CONFIG.FONTS.GAME_OVER;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -449,7 +461,7 @@ const Renderer = (() => {
       ctx.fillText(`P1: ${p1.score} kills`, centerX - 80, centerY);
       ctx.shadowBlur = 0;
 
-      ctx.fillStyle = "#666";
+      ctx.fillStyle = COLORS.textDim;
       ctx.fillText("vs", centerX, centerY);
 
       ctx.fillStyle = COLORS.p2;
@@ -459,12 +471,12 @@ const Renderer = (() => {
       ctx.shadowBlur = 0;
 
       // "TIME'S UP" label
-      ctx.fillStyle = "#888";
+      ctx.fillStyle = COLORS.textMuted;
       ctx.font = RENDER_CONFIG.FONTS.LABEL;
       ctx.fillText("TIME'S UP", centerX, centerY + 30);
     }
 
-    ctx.fillStyle = "#666666";
+    ctx.fillStyle = COLORS.textDim;
     ctx.font = RENDER_CONFIG.FONTS.GAME_OVER_SUB;
     ctx.fillText(
       isGuest ? "Spin joystick to request restart" : "Tap / press R to restart",
@@ -479,7 +491,7 @@ const Renderer = (() => {
   function drawOnlineIndicator(connected) {
     const x = CANVAS_WIDTH - RENDER_CONFIG.INDICATOR.OFFSET;
     const y = CANVAS_HEIGHT - RENDER_CONFIG.INDICATOR.OFFSET;
-    const color = connected ? "#2ecc71" : "#e74c3c";
+    const color = connected ? COLORS.healthGreen : COLORS.healthRed;
 
     // Glowing dot
     ctx.fillStyle = color;
@@ -491,7 +503,7 @@ const Renderer = (() => {
     ctx.shadowBlur = 0;
 
     // Label
-    ctx.fillStyle = "#888";
+    ctx.fillStyle = COLORS.textMuted;
     ctx.font = RENDER_CONFIG.FONTS.HUD_SMALL;
     ctx.textAlign = "right";
     ctx.fillText("P2P", x - 10, y + 4);
@@ -499,12 +511,12 @@ const Renderer = (() => {
 
   // ---- Disconnect Overlay ----
   function drawDisconnected() {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.fillStyle = COLORS.overlayModal;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    ctx.shadowColor = "#ff4444";
+    ctx.shadowColor = COLORS.disconnectAlert;
     ctx.shadowBlur = 20;
-    ctx.fillStyle = "#ff4444";
+    ctx.fillStyle = COLORS.disconnectAlert;
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -515,7 +527,7 @@ const Renderer = (() => {
     );
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = "#888";
+    ctx.fillStyle = COLORS.textMuted;
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT_SUB;
     ctx.fillText(
       "Returning to lobby...",
@@ -526,19 +538,19 @@ const Renderer = (() => {
   }
 
   function drawReconnecting(secondsLeft) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.fillStyle = COLORS.overlayModal;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    ctx.shadowColor = "#ffaa00";
+    ctx.shadowColor = COLORS.reconnectAlert;
     ctx.shadowBlur = 20;
-    ctx.fillStyle = "#ffaa00";
+    ctx.fillStyle = COLORS.reconnectAlert;
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("CONNECTION LOST", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = "#aaa";
+    ctx.fillStyle = COLORS.textLight;
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT_SUB;
     ctx.fillText(
       `Reconnecting\u2026 (${secondsLeft}s)`,
@@ -568,16 +580,16 @@ const Renderer = (() => {
     ctx.globalAlpha = alpha;
 
     // Map name with neon glow
-    ctx.shadowColor = "#ff6b00";
+    ctx.shadowColor = COLORS.accent;
     ctx.shadowBlur = 20;
-    ctx.fillStyle = "#ff6b00";
+    ctx.fillStyle = COLORS.accent;
     ctx.font = RENDER_CONFIG.FONTS.ANNOUNCE;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(mazeAnnouncement, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 10);
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = "#888";
+    ctx.fillStyle = COLORS.textMuted;
     ctx.font = RENDER_CONFIG.FONTS.ANNOUNCE_SUB;
     ctx.fillText("MAP CHANGED", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 25);
     ctx.globalAlpha = 1;
@@ -601,7 +613,7 @@ const Renderer = (() => {
       // Danger zone flat circle — subtle, half blast radius
       const dangerAlpha = 0.04 + 0.06 * (1 - fuseRatio);
       ctx.globalAlpha = dangerAlpha;
-      ctx.fillStyle = "#ff6400";
+      ctx.fillStyle = COLORS.explosionBase;
       ctx.beginPath();
       ctx.arc(cx, cy, BOMB_BLAST_RADIUS * 0.55, 0, Math.PI * 2);
       ctx.fill();
@@ -623,7 +635,7 @@ const Renderer = (() => {
       ctx.globalAlpha = 1;
 
       // Bomb body
-      ctx.fillStyle = "#333";
+      ctx.fillStyle = COLORS.bombBody;
       ctx.beginPath();
       ctx.arc(cx, cy, bombSize, 0, Math.PI * 2);
       ctx.fill();
@@ -640,7 +652,7 @@ const Renderer = (() => {
       const sparkAngle = (now / 100) % (Math.PI * 2);
       const sparkX = cx + Math.cos(sparkAngle) * bombSize * 0.3;
       const sparkY = cy - bombSize * 0.8;
-      ctx.fillStyle = "#ffff88";
+      ctx.fillStyle = COLORS.bombSpark;
       ctx.beginPath();
       ctx.arc(sparkX, sparkY, 3, 0, Math.PI * 2);
       ctx.fill();
@@ -655,8 +667,8 @@ const Renderer = (() => {
 
       // Timer text below bomb
       const secsLeft = Math.ceil(bomb.fuseLeft / 1000);
-      ctx.fillStyle = fuseRatio < 0.33 ? "#ff3333" : "#ffaa00";
-      ctx.font = "bold 14px Courier New";
+      ctx.fillStyle = fuseRatio < 0.33 ? COLORS.bombFuseLow : COLORS.bomb;
+      ctx.font = RENDER_CONFIG.FONTS.BOMB_TIMER;
       ctx.textAlign = "center";
       ctx.fillText(secsLeft + "s", cx, cy + bombSize + 14);
     });
@@ -674,7 +686,7 @@ const Renderer = (() => {
       ctx.save();
 
       // Expanding shockwave ring
-      ctx.strokeStyle = `rgba(255, 150, 0, ${alpha * 0.8})`;
+      ctx.strokeStyle = `rgba(${COLORS.explosionShockwaveRGB}, ${alpha * 0.8})`;
       ctx.lineWidth = 4 * (1 - progress);
       ctx.beginPath();
       ctx.arc(exp.x, exp.y, radius, 0, Math.PI * 2);
@@ -682,12 +694,12 @@ const Renderer = (() => {
 
       // Inner fireball (two flat circles — no gradient)
       ctx.globalAlpha = alpha * 0.45;
-      ctx.fillStyle = "#ff7700";
+      ctx.fillStyle = COLORS.explosionParticle;
       ctx.beginPath();
       ctx.arc(exp.x, exp.y, radius * 0.8, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = alpha * 0.5;
-      ctx.fillStyle = "#ffffc8";
+      ctx.fillStyle = COLORS.explosionLight;
       ctx.beginPath();
       ctx.arc(exp.x, exp.y, radius * 0.35, 0, Math.PI * 2);
       ctx.fill();
@@ -699,7 +711,7 @@ const Renderer = (() => {
         const dist = radius * (0.4 + 0.6 * progress);
         const sx = exp.x + Math.cos(angle) * dist;
         const sy = exp.y + Math.sin(angle) * dist;
-        ctx.fillStyle = `rgba(255, 255, 100, ${alpha})`;
+        ctx.fillStyle = `rgba(${COLORS.explosionSparkRGB}, ${alpha})`;
         ctx.beginPath();
         ctx.arc(sx, sy, Math.max(0, 3 * (1 - progress)), 0, Math.PI * 2);
         ctx.fill();
@@ -718,7 +730,7 @@ const Renderer = (() => {
 
       // Green ground circle (flat — no gradient)
       ctx.globalAlpha = 0.08;
-      ctx.fillStyle = "#44ff44";
+      ctx.fillStyle = COLORS.zombie;
       ctx.beginPath();
       ctx.arc(z.x, z.y, CELL_W * 0.38, 0, Math.PI * 2);
       ctx.fill();
@@ -746,16 +758,16 @@ const Renderer = (() => {
     // Icy blue overlay around player
     ctx.save();
     ctx.globalAlpha = 0.35;
-    ctx.fillStyle = "#88ddff";
+    ctx.fillStyle = COLORS.freezeOverlay;
     ctx.beginPath();
     ctx.arc(cx + shakeX, cy + shakeY, PLAYER_SIZE * 0.9, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
 
     // Ice crystal border
-    ctx.strokeStyle = "#aaeeff";
+    ctx.strokeStyle = COLORS.freezeStroke;
     ctx.lineWidth = 2;
-    ctx.shadowColor = "#00ccff";
+    ctx.shadowColor = COLORS.freezeGlow;
     ctx.shadowBlur = 12;
     ctx.beginPath();
     ctx.arc(cx + shakeX, cy + shakeY, PLAYER_SIZE * 0.9, 0, Math.PI * 2);
@@ -763,8 +775,8 @@ const Renderer = (() => {
     ctx.shadowBlur = 0;
 
     // "FROZEN" text
-    ctx.fillStyle = "#00ccff";
-    ctx.font = "bold 10px Courier New";
+    ctx.fillStyle = COLORS.freezeGlow;
+    ctx.font = RENDER_CONFIG.FONTS.IN_WORLD_LABEL;
     ctx.textAlign = "center";
     ctx.fillText("FROZEN", cx + shakeX, player.y - 20 + shakeY);
     ctx.restore();
@@ -787,8 +799,8 @@ const Renderer = (() => {
   // Pulsing colored vignette on the screen edges when HP is critical
   function drawLowHealthVignette(p1, p2) {
     const configs = [
-      { p: p1, rgb: "0,180,255" },
-      { p: p2, rgb: "255,60,60" },
+      { p: p1, rgb: COLORS.p1RGB },
+      { p: p2, rgb: COLORS.p2RGB },
     ];
     configs.forEach(({ p, rgb }) => {
       if (!p.alive || p.health > LOW_HEALTH_THRESHOLD) return;
@@ -815,22 +827,22 @@ const Renderer = (() => {
 
       // Ground circle (flat — no gradient)
       ctx.globalAlpha = 0.13;
-      ctx.fillStyle = "#2ecc71";
+      ctx.fillStyle = COLORS.healthGreen;
       ctx.beginPath();
       ctx.arc(cx, cy, size * 1.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
 
       // Green cross (no shadowBlur)
-      ctx.fillStyle = "#2ecc71";
+      ctx.fillStyle = COLORS.healthGreen;
       const thick = size * 0.38;
       const arm = size * pulse;
       ctx.fillRect(cx - arm, cy - thick, arm * 2, thick * 2); // horizontal bar
       ctx.fillRect(cx - thick, cy - arm, thick * 2, arm * 2); // vertical bar
 
       // "+HP" label
-      ctx.fillStyle = "#2ecc71";
-      ctx.font = "bold 11px Courier New";
+      ctx.fillStyle = COLORS.healthGreen;
+      ctx.font = RENDER_CONFIG.FONTS.HEALTH_PACK_LABEL;
       ctx.textAlign = "center";
       ctx.fillText("+HP", cx, cy + size + 10);
     });
@@ -848,7 +860,7 @@ const Renderer = (() => {
 
       ctx.globalAlpha = alpha;
       ctx.fillStyle = ft.color;
-      ctx.font = "bold 16px Courier New";
+      ctx.font = RENDER_CONFIG.FONTS.HUD;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(ft.text, ft.x, ft.y - yOffset);
@@ -878,7 +890,7 @@ const Renderer = (() => {
 
       // Ground circle (flat — no gradient)
       ctx.globalAlpha = 0.14;
-      ctx.fillStyle = "#ffe600";
+      ctx.fillStyle = COLORS.speedBoostYellow;
       ctx.beginPath();
       ctx.arc(cx, cy, size * 1.6, 0, Math.PI * 2);
       ctx.fill();
@@ -886,8 +898,8 @@ const Renderer = (() => {
 
       // Lightning bolt shape (no shadowBlur)
       ctx.save();
-      ctx.fillStyle = "#ffe600";
-      ctx.strokeStyle = "#fff8a0";
+      ctx.fillStyle = COLORS.speedBoostYellow;
+      ctx.strokeStyle = COLORS.speedBoostStroke;
       ctx.lineWidth = 1.2;
       const s = size * pulse;
       ctx.beginPath();
@@ -902,8 +914,8 @@ const Renderer = (() => {
       ctx.stroke();
       ctx.restore();
 
-      ctx.fillStyle = "#ffe600";
-      ctx.font = "bold 10px Courier New";
+      ctx.fillStyle = COLORS.speedBoostYellow;
+      ctx.font = RENDER_CONFIG.FONTS.IN_WORLD_LABEL;
       ctx.textAlign = "center";
       ctx.fillText("SPEED", cx, cy + size + 12);
     });
@@ -918,7 +930,7 @@ const Renderer = (() => {
       const size = CELL_W * 0.28;
       const pulse = 1 + 0.1 * Math.sin(now / 340);
       const isRapid = p.type === 'rapidfire';
-      const mainColor = isRapid ? "#3af" : "#f93";
+      const mainColor = isRapid ? COLORS.weaponRapidfire : COLORS.weaponScatter;
 
       // Ground circle (flat — no gradient)
       ctx.globalAlpha = 0.13;
@@ -941,7 +953,7 @@ const Renderer = (() => {
       ctx.restore();
 
       ctx.fillStyle = mainColor;
-      ctx.font = "bold 10px Courier New";
+      ctx.font = RENDER_CONFIG.FONTS.IN_WORLD_LABEL;
       ctx.textAlign = "center";
       ctx.fillText(isRapid ? "RAPID" : "SCATTER", cx, cy + size + 12);
     });
@@ -950,6 +962,7 @@ const Renderer = (() => {
   return {
     init,
     invalidateMazeCache,
+    applyThemeFonts,
     drawArena,
     drawMaze,
     drawPlayer,

@@ -110,6 +110,11 @@
       }
     </script>
 
+    <!-- ===== Google Fonts ===== -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
     <!-- ===== Resource Hints ===== -->
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 
@@ -158,7 +163,8 @@
     <!-- ===== Lobby Screen ===== -->
     <main id="lobby">
       <header>
-        <h1>⚔ P2P Maze Shooter</h1>
+        <h1> ⚔ </h1>
+        <h1>P2P Maze Shooter</h1>
         <p>A peer-to-peer browser battle game</p>
       </header>
 
@@ -170,7 +176,7 @@
 
       <div class="lobby-buttons">
         <button
-          class="btn btn-secondary"
+          class="btn btn-primary"
           onclick="
             Sound.init();
             Sound.resume();
@@ -192,75 +198,159 @@
       </div>
 
       <p class="maze-rotation-note">
-        Maps rotate randomly every minutes during gameplay
+        Two players. six arenas. sixty seconds per map.<br>share a code and fight.
       </p>
 
-      <footer class="author-credit">
-        Made by
-        <a href="https://arifulislamat.com" target="_blank" rel="noopener"
-          >Ariful Islam</a
-        >
-      </footer>
     </main>
 
     <!-- Maze selector builder script (runs after constants.js) -->
     <script>
+      // Draw maze cell data onto an existing canvas context using current COLORS.
+      function drawMazePreviewCanvas(pctx, pw, ph, mazeData) {
+        const cols = mazeData[0].length;
+        const rows = mazeData.length;
+        const cw = pw / cols;
+        const ch = ph / rows;
+        pctx.clearRect(0, 0, pw, ph);
+        pctx.fillStyle = COLORS.background;
+        pctx.fillRect(0, 0, pw, ph);
+        mazeData.forEach((row, r) => {
+          row.forEach((cell, c) => {
+            const x = c * cw, y = r * ch;
+            if (cell === 1) {
+              pctx.fillStyle = COLORS.wall;
+              pctx.fillRect(x, y, cw + 0.5, ch + 0.5);
+              pctx.fillStyle = COLORS.wallHighlight || "rgba(255,255,255,0.07)";
+              pctx.fillRect(x, y, cw + 0.5, 1.2);
+            } else if (cell === 2) {
+              pctx.fillStyle = COLORS.p1 + "8c";
+              pctx.beginPath();
+              pctx.arc(x + cw / 2, y + ch / 2, Math.min(cw, ch) / 2.2, 0, Math.PI * 2);
+              pctx.fill();
+              pctx.strokeStyle = COLORS.p1 + "33";
+              pctx.lineWidth = 1;
+              pctx.beginPath();
+              pctx.arc(x + cw / 2, y + ch / 2, Math.min(cw, ch) / 1.5, 0, Math.PI * 2);
+              pctx.stroke();
+            } else if (cell === 3) {
+              pctx.fillStyle = COLORS.p2 + "8c";
+              pctx.beginPath();
+              pctx.arc(x + cw / 2, y + ch / 2, Math.min(cw, ch) / 2.2, 0, Math.PI * 2);
+              pctx.fill();
+              pctx.strokeStyle = COLORS.p2 + "33";
+              pctx.lineWidth = 1;
+              pctx.beginPath();
+              pctx.arc(x + cw / 2, y + ch / 2, Math.min(cw, ch) / 1.5, 0, Math.PI * 2);
+              pctx.stroke();
+            }
+          });
+        });
+        // Subtle center vignette
+        const grd = pctx.createRadialGradient(pw / 2, ph / 2, 0, pw / 2, ph / 2, pw / 2.2);
+        grd.addColorStop(0, "rgba(0,0,0,0.04)");
+        grd.addColorStop(1, "transparent");
+        pctx.fillStyle = grd;
+        pctx.fillRect(0, 0, pw, ph);
+      }
+
+      // Re-draw all existing maze preview canvases after a theme change.
+      function redrawMazePreviews() {
+        document.querySelectorAll(".maze-card[data-maze]").forEach((card) => {
+          const maze = MAZES[card.dataset.maze];
+          if (!maze) return;
+          const cv = card.querySelector("canvas");
+          if (!cv) return;
+          drawMazePreviewCanvas(cv.getContext("2d"), cv.width, cv.height, maze.data);
+        });
+      }
+
       function buildMazeSelector() {
         const grid = document.getElementById("maze-grid");
         if (!grid) return;
         grid.innerHTML = "";
+        const defaultIdx = Math.min(1, MAZE_KEYS.length - 1);
         MAZE_KEYS.forEach((key, i) => {
           const maze = MAZES[key];
           const div = document.createElement("div");
-          div.className = "maze-option" + (i === 0 ? " selected" : "");
+          div.className = "maze-card" + (i === defaultIdx ? " sel" : "");
           div.dataset.maze = key;
+          if (i === defaultIdx) Game.selectMaze(key);
           div.onclick = () => {
             Game.selectMaze(key);
             document
-              .querySelectorAll(".maze-option")
-              .forEach((el) => el.classList.remove("selected"));
-            div.classList.add("selected");
+              .querySelectorAll(".maze-card")
+              .forEach((el) => el.classList.remove("sel"));
+            div.classList.add("sel");
             div.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
           };
 
-          // Mini preview canvas
+          // Preview canvas (4:3 ratio)
           const preview = document.createElement("canvas");
-          const pw = 105,
-            ph = 75;
+          const pw = 252, ph = 189;
           preview.width = pw;
           preview.height = ph;
-          const pctx = preview.getContext("2d");
-          const cw = pw / maze.data[0].length;
-          const ch = ph / maze.data.length;
-          maze.data.forEach((row, r) => {
-            row.forEach((cell, c) => {
-              if (cell === 1) pctx.fillStyle = "#3a3a5c";
-              else if (cell === 2) pctx.fillStyle = "#00d4ff";
-              else if (cell === 3) pctx.fillStyle = "#ff4444";
-              else if (cell === 4) pctx.fillStyle = "#44ff44";
-              else if (cell === 5) pctx.fillStyle = "#ffaa00";
-              else pctx.fillStyle = "#0a0a1a";
-              pctx.fillRect(c * cw, r * ch, cw, ch);
-            });
-          });
+          drawMazePreviewCanvas(preview.getContext("2d"), pw, ph, maze.data);
 
           const name = document.createElement("div");
-          name.className = "maze-name";
+          name.className = "maze-card-name";
           name.textContent = maze.name;
 
           const desc = document.createElement("div");
-          desc.className = "maze-desc";
+          desc.className = "maze-card-desc";
           desc.textContent = maze.desc;
 
-          div.appendChild(preview);
-          div.appendChild(name);
-          div.appendChild(desc);
+          const body = document.createElement("div");
+          body.className = "maze-card-body";
+          body.appendChild(preview);
+          body.appendChild(name);
+          body.appendChild(desc);
+          div.appendChild(body);
           grid.appendChild(div);
+        });
+        // Scroll the default-selected card to center so cards appear on both sides
+        requestAnimationFrame(() => {
+          const sel = grid.querySelector(".maze-card.sel");
+          if (sel) sel.scrollIntoView({ behavior: "instant", block: "nearest", inline: "center" });
         });
       }
       // Build after DOM + constants are ready
       // Shared helper: read #room=CODE from the URL hash and open join UI.
       // Returns true if a room code was found and acted on.
+      function initThemeSelector() {
+        const grid = document.getElementById("settings-theme-grid");
+        if (!grid) return;
+        const themes = ThemeManager.getThemeList();
+        const activeId = ThemeManager.active ? ThemeManager.active.id : ThemeRegistry.defaultTheme;
+        themes.forEach(({ id, label }) => {
+          const themeData = ThemeRegistry.themes[id];
+          const accent = (themeData && themeData.colors && themeData.colors.accent) || "#ff6b00";
+          const card = document.createElement("button");
+          card.className = "theme-card" + (id === activeId ? " active" : "");
+          card.dataset.themeId = id;
+          card.style.setProperty("--t-accent", accent);
+          card.innerHTML = '<span class="theme-dot"></span><span>' + label + "</span>";
+          card.onclick = () => ThemeManager.apply(id);
+          grid.appendChild(card);
+        });
+        document.addEventListener("themechange", (e) => {
+          grid.querySelectorAll(".theme-card").forEach((c) => {
+            c.classList.toggle("active", c.dataset.themeId === e.detail.id);
+          });
+        });
+      }
+
+      function openSettings() {
+        document.getElementById("settingsModal").classList.add("open");
+      }
+
+      function closeSettings() {
+        document.getElementById("settingsModal").classList.remove("open");
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeSettings();
+      });
+
       function openRoomFromHash() {
         const hashParams = new URLSearchParams(window.location.hash.slice(1));
         const queryParams = new URLSearchParams(window.location.search);
@@ -283,7 +373,10 @@
       }
 
       window.addEventListener("DOMContentLoaded", () => {
+        ThemeManager.init();
         setTimeout(buildMazeSelector, 0);
+        initThemeSelector();
+        document.addEventListener("themechange", redrawMazePreviews);
 
         // Auto-rejoin saved session (host/guest page reload)
         if (Game.rejoinSession()) return;
@@ -305,70 +398,46 @@
     <div id="connectionUI">
       <!-- Host Panel -->
       <div id="hostUI" style="display: none">
-        <h3>CREATE GAME ROOM</h3>
-        <p class="online-subtitle">Share this room code with your opponent:</p>
-        <div class="room-code" id="roomCode">------</div>
-        <a
-          id="shareLink"
-          href="#"
-          target="_blank"
-          rel="noopener"
-          style="display: none"
-        ></a>
-        <div class="host-actions">
-          <button
-            id="copyLinkBtn"
-            class="btn btn-primary btn-copy"
-            onclick="Game.copyShareLink()"
-          >
-            📋 Copy Invite Link
-          </button>
-        </div>
-        <p id="connectionStatus" class="waiting-pulse" style="display: none">Creating room...</p>
-        <div style="margin-top: 2rem">
-          <button class="btn btn-secondary" onclick="Game.cancelOnline()">
-            ✕ Cancel
-          </button>
+        <div class="conn-panel stagger">
+          <div class="panel-label">SHARE THIS ROOM CODE</div>
+          <div class="room-code" id="roomCode">------</div>
+          <a id="shareLink" href="#" target="_blank" rel="noopener" style="display: none"></a>
+          <div class="room-code-line"></div>
+          <div class="host-status">
+            <span class="dot"></span>
+            <span id="connectionStatus">Creating room...</span>
+          </div>
+          <div class="panel-actions">
+            <button id="copyLinkBtn" class="btn btn-primary" onclick="Game.copyShareLink()">COPY INVITE LINK</button>
+            <button class="btn btn-secondary" onclick="Game.cancelOnline()">CANCEL</button>
+          </div>
         </div>
       </div>
 
       <!-- Join Panel -->
       <div id="joinUI" style="display: none">
-        <h3>JOIN GAME ROOM</h3>
-        <p class="online-subtitle">Enter the room code:</p>
-        <input
-          type="text"
-          id="roomCodeInput"
-          placeholder="ROOM CODE"
-          maxlength="6"
-          minlength="6"
-          autocomplete="off"
-          onkeydown="if (event.key === 'Enter') Game.joinOnlineGame();"
-        />
-        <div class="join-buttons">
-          <button
-            class="btn btn-primary"
-            onclick="
-              Sound.init();
-              Sound.resume();
-              Game.joinOnlineGame();
-            "
-          >
-            Connect
-          </button>
-          <button class="btn btn-secondary" onclick="Game.cancelOnline()">
-            ✕ Cancel
-          </button>
+        <div class="conn-panel stagger">
+          <div class="panel-label">ENTER ROOM CODE</div>
+          <input
+            class="room-input"
+            type="text"
+            id="roomCodeInput"
+            placeholder="——————"
+            maxlength="6"
+            minlength="6"
+            autocomplete="off"
+            inputmode="text"
+            onkeydown="if (event.key === 'Enter') Game.joinOnlineGame();"
+            oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);"
+          />
+          <div class="join-actions">
+            <button class="btn btn-primary" onclick="Sound.init();Sound.resume();Game.joinOnlineGame();">CONNECT</button>
+            <button class="btn btn-secondary" onclick="Game.cancelOnline()">CANCEL</button>
+          </div>
+          <p id="joinStatus"></p>
         </div>
-        <p id="joinStatus"></p>
       </div>
 
-      <footer class="author-credit">
-        Made by
-        <a href="https://arifulislamat.com" target="_blank" rel="noopener"
-          >Ariful Islam</a
-        >
-      </footer>
     </div>
 
     <!-- ===== Back / Leave Button ===== -->
@@ -428,8 +497,35 @@
       </svg>
     </button>
 
+    <!-- ===== Settings Button ===== -->
+    <button
+      id="settingsBtn"
+      onclick="openSettings()"
+      title="Settings"
+      aria-label="Settings"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+
+    <!-- ===== Settings Modal ===== -->
+    <div id="settingsModal" role="dialog" aria-modal="true" aria-label="Settings" onclick="if(event.target===this)closeSettings()">
+      <div id="settingsBox">
+        <div class="settings-header">
+          <span class="settings-title">⚙ &nbsp;SETTINGS</span>
+          <button id="settingsClose" onclick="closeSettings()" aria-label="Close settings">✕</button>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">Theme</div>
+          <div id="settings-theme-grid"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== Game Canvas ===== -->
-    <div id="gameContainer">
+    <div id="gameContainer" style="display:none">
       <canvas id="gameCanvas"></canvas>
 
       <!-- Touch Controls (portrait mobile only, shown via CSS media query) -->
@@ -446,15 +542,50 @@
 
       <!-- Author credit (portrait mobile gameplay footer) -->
       <footer id="gameplay-author" class="author-credit">
-        Made by <a href="https://arifulislamat.com" target="_blank" rel="noopener">Ariful Islam</a>
+        <a href="https://arifulislamat.com" target="_blank" rel="noopener">Ariful Islam</a>
       </footer>
     </div>
 
     <!-- ===== Controls Help ===== -->
     <div id="controls-help" style="display: none"></div>
 
+    <!-- ===== Global Site Footer ===== -->
+    <footer id="site-footer">
+      <div class="footer-meta">
+        <span>⚔ P2P Maze Shooter</span>
+        <span class="footer-sep">·</span>
+        <span>WebRTC P2P</span>
+        <span class="footer-sep">·</span>
+        <span>Vanilla JS</span>
+        <span class="footer-sep">·</span>
+        <span>No Server</span>
+        <span class="footer-sep">·</span>
+        <span>No Download</span>
+        <span class="footer-sep">·</span>
+        <span>Open Source</span>
+      </div>
+      <div class="footer-links">
+        <span><a href="https://arifulislamat.com" target="_blank" rel="noopener">Ariful Islam</a></span>
+        <span class="footer-sep">·</span>
+        <a href="https://github.com/arifulislamat/p2p-maze-shooter" target="_blank" rel="noopener">Github</a>
+        <span class="footer-sep">·</span>
+        <a href="https://github.com/arifulislamat/p2p-maze-shooter/blob/master/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <span class="footer-sep">·</span>
+        <a href="https://github.com/arifulislamat/p2p-maze-shooter/issues" target="_blank" rel="noopener">Report Issue</a>
+        <span class="footer-sep">·</span>
+        <a href="https://github.com/arifulislamat/p2p-maze-shooter/blob/master/CONTRIBUTING.md" target="_blank" rel="noopener">Contribute</a>
+      </div>
+    </footer>
+
     <!-- ===== Scripts (order matters) ===== -->
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+    <!-- Theme system: load before constants.js so registry is ready at startup -->
+    <script src="themes/retro-neon.js"></script>
+    <script src="themes/midnight-void.js"></script>
+    <script src="themes/sandstorm.js"></script>
+    <script src="themes/cyber-sakura.js"></script>
+    <script src="themes/index.js"></script>
+    <script src="core/ThemeManager.js"></script>
     <script src="constants.js"></script>
     <script src="sound.js"></script>
     <script src="physics.js"></script>
