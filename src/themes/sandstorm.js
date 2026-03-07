@@ -62,17 +62,19 @@ const sandstormTheme = {
     healthGreen:    "#228844",
     healthRed:      "#cc2233",
     healthBg:       "#c0b49a",
-    hudText:        "#2a2418",
+    hudText:        "#e8dcc8",
     white:          "#1a1410",
-    accent:         "#c06000",
-    textLight:      "#5a5040",
-    textMuted:      "#7a7060",
-    textDim:        "#9a9080",
+    accent:         "#e07818",
+    textLight:      "#c8b898",
+    textMuted:      "#a89068",
+    textDim:        "#9a8060",
 
     // --- Overlays ---
-    overlayHudBg:     "rgba(232,221,200,0.6)",
-    overlayModal:     "rgba(232,221,200,0.92)",
-    overlayCountdown: "rgba(232,221,200,0.8)",
+    overlayHudBg:     "rgba(60, 49, 35, 0.92)",
+    overlayModal:     "rgba(119, 112, 101, 0.92)",
+    overlayCountdown: "rgba(134, 127, 114, 0.8)",
+    glassPanelBg:     "rgba(24, 15, 5, 0.92)",   // warm dark-brown card
+    glassPanelBorder: "rgba(255, 210, 140, 0.25)", // soft amber highlight
 
     // --- Countdown ---
     countdownGo:    "#228844",
@@ -113,20 +115,20 @@ const sandstormTheme = {
   // ---------------------------------------------------------------------------
   fonts: {
     canvas: {
-      HUD:              "bold 16px Courier New",
-      HUD_SMALL:        "10px Courier New",
-      LABEL:            "bold 12px Courier New",
-      COUNTDOWN:        "bold 120px Courier New",
-      RESPAWN:          "bold 20px Courier New",
-      GAME_OVER:        "bold 60px Courier New",
-      GAME_OVER_SUB:    "16px Courier New",
-      DISCONNECT:       "bold 36px Courier New",
-      DISCONNECT_SUB:   "16px Courier New",
-      ANNOUNCE:         "bold 36px Courier New",
-      ANNOUNCE_SUB:     "14px Courier New",
-      BOMB_TIMER:       "bold 14px Courier New",
-      IN_WORLD_LABEL:   "bold 10px Courier New",
-      HEALTH_PACK_LABEL:"bold 11px Courier New",
+      HUD:              "bold 16px 'JetBrains Mono', 'Courier New', monospace",
+      HUD_SMALL:        "10px 'JetBrains Mono', 'Courier New', monospace",
+      LABEL:            "bold 12px 'JetBrains Mono', 'Courier New', monospace",
+      COUNTDOWN:        "bold 120px 'JetBrains Mono', 'Courier New', monospace",
+      RESPAWN:          "bold 20px 'JetBrains Mono', 'Courier New', monospace",
+      GAME_OVER:        "bold 60px 'JetBrains Mono', 'Courier New', monospace",
+      GAME_OVER_SUB:    "20px 'JetBrains Mono', 'Courier New', monospace",
+      DISCONNECT:       "bold 36px 'JetBrains Mono', 'Courier New', monospace",
+      DISCONNECT_SUB:   "20px 'JetBrains Mono', 'Courier New', monospace",
+      ANNOUNCE:         "bold 36px 'JetBrains Mono', 'Courier New', monospace",
+      ANNOUNCE_SUB:     "14px 'JetBrains Mono', 'Courier New', monospace",
+      BOMB_TIMER:       "bold 14px 'JetBrains Mono', 'Courier New', monospace",
+      IN_WORLD_LABEL:   "bold 10px 'JetBrains Mono', 'Courier New', monospace",
+      HEALTH_PACK_LABEL:"bold 11px 'JetBrains Mono', 'Courier New', monospace",
     },
   },
 

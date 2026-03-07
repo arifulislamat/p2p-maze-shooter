@@ -142,6 +142,8 @@ const CONFIG = {
     overlayHudBg:     "rgba(0,0,0,0.5)",    // semi-transparent HUD bar
     overlayModal:     "rgba(0,0,0,0.85)",   // disconnect / game-over modals
     overlayCountdown: "rgba(0,0,0,0.7)",    // countdown backdrop
+    glassPanelBg:     "rgba(8,8,22,0.88)",  // glass card fill (dark themes)
+    glassPanelBorder: "rgba(255,255,255,0.28)", // glass card inner border
 
     // --- Countdown ---
     countdownGo:    "#44ff44",    // "GO!" text glow color

@@ -68,8 +68,10 @@ const midnightVoidTheme = {
     textDim:        "#404060",
 
     // --- Overlays ---
-    overlayHudBg:     "rgba(4,4,14,0.6)",
+    overlayHudBg:     "rgba(4, 4, 14, 0.76)",
     overlayModal:     "rgba(4,4,14,0.92)",
+    glassPanelBg:     "rgba(4, 4, 18, 0.92)",
+    glassPanelBorder: "rgba(255, 255, 255, 0.18)",
     overlayCountdown: "rgba(4,4,14,0.8)",
 
     // --- Countdown ---
@@ -111,20 +113,20 @@ const midnightVoidTheme = {
   // ---------------------------------------------------------------------------
   fonts: {
     canvas: {
-      HUD:              "bold 16px Courier New",
-      HUD_SMALL:        "10px Courier New",
-      LABEL:            "bold 12px Courier New",
-      COUNTDOWN:        "bold 120px Courier New",
-      RESPAWN:          "bold 20px Courier New",
-      GAME_OVER:        "bold 60px Courier New",
-      GAME_OVER_SUB:    "16px Courier New",
-      DISCONNECT:       "bold 36px Courier New",
-      DISCONNECT_SUB:   "16px Courier New",
-      ANNOUNCE:         "bold 36px Courier New",
-      ANNOUNCE_SUB:     "14px Courier New",
-      BOMB_TIMER:       "bold 14px Courier New",
-      IN_WORLD_LABEL:   "bold 10px Courier New",
-      HEALTH_PACK_LABEL:"bold 11px Courier New",
+      HUD:              "bold 16px 'JetBrains Mono', 'Courier New', monospace",
+      HUD_SMALL:        "10px 'JetBrains Mono', 'Courier New', monospace",
+      LABEL:            "bold 12px 'JetBrains Mono', 'Courier New', monospace",
+      COUNTDOWN:        "bold 120px 'JetBrains Mono', 'Courier New', monospace",
+      RESPAWN:          "bold 20px 'JetBrains Mono', 'Courier New', monospace",
+      GAME_OVER:        "bold 60px 'JetBrains Mono', 'Courier New', monospace",
+      GAME_OVER_SUB:    "20px 'JetBrains Mono', 'Courier New', monospace",
+      DISCONNECT:       "bold 36px 'JetBrains Mono', 'Courier New', monospace",
+      DISCONNECT_SUB:   "20px 'JetBrains Mono', 'Courier New', monospace",
+      ANNOUNCE:         "bold 36px 'JetBrains Mono', 'Courier New', monospace",
+      ANNOUNCE_SUB:     "14px 'JetBrains Mono', 'Courier New', monospace",
+      BOMB_TIMER:       "bold 14px 'JetBrains Mono', 'Courier New', monospace",
+      IN_WORLD_LABEL:   "bold 10px 'JetBrains Mono', 'Courier New', monospace",
+      HEALTH_PACK_LABEL:"bold 11px 'JetBrains Mono', 'Courier New', monospace",
     },
   },
 

@@ -12,20 +12,20 @@ const Renderer = (() => {
       HEALTH_HEIGHT: 8,
     },
     FONTS: {
-      HUD:              "bold 16px Courier New",
-      HUD_SMALL:        "10px Courier New",
-      LABEL:            "bold 12px Courier New",
-      COUNTDOWN:        "bold 120px Courier New",
-      RESPAWN:          "bold 20px Courier New",
-      GAME_OVER:        "bold 60px Courier New",
-      GAME_OVER_SUB:    "16px Courier New",
-      DISCONNECT:       "bold 36px Courier New",
-      DISCONNECT_SUB:   "16px Courier New",
-      ANNOUNCE:         "bold 36px Courier New",
-      ANNOUNCE_SUB:     "14px Courier New",
-      BOMB_TIMER:       "bold 14px Courier New",
-      IN_WORLD_LABEL:   "bold 10px Courier New",
-      HEALTH_PACK_LABEL:"bold 11px Courier New",
+      HUD:              "bold 16px 'JetBrains Mono', 'Courier New', monospace",
+      HUD_SMALL:        "10px 'JetBrains Mono', 'Courier New', monospace",
+      LABEL:            "bold 12px 'JetBrains Mono', 'Courier New', monospace",
+      COUNTDOWN:        "bold 120px 'JetBrains Mono', 'Courier New', monospace",
+      RESPAWN:          "bold 20px 'JetBrains Mono', 'Courier New', monospace",
+      GAME_OVER:        "bold 60px 'JetBrains Mono', 'Courier New', monospace",
+      GAME_OVER_SUB:    "20px 'JetBrains Mono', 'Courier New', monospace",
+      DISCONNECT:       "bold 36px 'JetBrains Mono', 'Courier New', monospace",
+      DISCONNECT_SUB:   "20px 'JetBrains Mono', 'Courier New', monospace",
+      ANNOUNCE:         "bold 36px 'JetBrains Mono', 'Courier New', monospace",
+      ANNOUNCE_SUB:     "14px 'JetBrains Mono', 'Courier New', monospace",
+      BOMB_TIMER:       "bold 14px 'JetBrains Mono', 'Courier New', monospace",
+      IN_WORLD_LABEL:   "bold 10px 'JetBrains Mono', 'Courier New', monospace",
+      HEALTH_PACK_LABEL:"bold 11px 'JetBrains Mono', 'Courier New', monospace",
     },
     EFFECTS: {
       CORNER_ACCENT_LEN: 16,
@@ -44,8 +44,70 @@ const Renderer = (() => {
   let ctx = null;
   let mazeCache = null;
 
+  // Offscreen canvas used to capture the game frame so overlays can blur it.
+  let blurCanvas = null;
+  let blurCtx = null;
+  // Detected once in init — ctx.filter is unsupported on iOS Safari < 18.
+  let _supportsCtxFilter = false;
+
   function init(canvasCtx) {
     ctx = canvasCtx;
+    blurCanvas = document.createElement("canvas");
+    blurCanvas.width  = CANVAS_WIDTH;
+    blurCanvas.height = CANVAS_HEIGHT;
+    blurCtx = blurCanvas.getContext("2d");
+    // Feature-detect canvas filter support (absent on iOS Safari < 18)
+    try {
+      const prev = ctx.filter;
+      ctx.filter = "blur(1px)";
+      _supportsCtxFilter = ctx.filter !== "none" && ctx.filter !== "";
+      ctx.filter = prev || "none";
+    } catch (e) {
+      _supportsCtxFilter = false;
+    }
+  }
+
+  // Copy the current canvas pixel-state into blurCanvas so overlay functions
+  // can draw it back blurred without touching the live canvas first.
+  // Explicit destination dimensions normalise the high-DPR physical canvas back
+  // to game-coordinate space so the blur lines up with the live frame.
+  function captureBlurFrame() {
+    if (blurCtx) blurCtx.drawImage(ctx.canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  }
+
+  // Draw a canvas image blurred. Falls back to a soft multi-pass approximation
+  // on platforms that don't support ctx.filter (e.g. iOS Safari < 18).
+  function _drawBlurred(src, x, y, w, h) {
+    if (_supportsCtxFilter) {
+      ctx.filter = "blur(10px)";
+      ctx.drawImage(src, x, y, w, h);
+      ctx.filter = "none";
+    } else {
+      // Multi-pass offset draw simulates a soft-blur on unsupported platforms.
+      const offsets = [
+        [-10, 0], [10, 0], [0, -10], [0, 10],
+        [-7, -7], [7, -7], [-7, 7], [7, 7],
+        [-4, -4], [4, -4], [-4, 4], [4, 4],
+        [0, 0],
+      ];
+      ctx.globalAlpha = 1 / offsets.length;
+      for (const [dx, dy] of offsets) {
+        ctx.drawImage(src, x + dx, y + dy, w, h);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Draw the captured frame blurred + a dark tint over the whole canvas.
+  // Call captureBlurFrame() at the very start of each overlay if you want
+  // live game content behind the blur.
+  function drawBlurredBackground(tint) {
+    if (!blurCanvas) return;
+    ctx.save();
+    _drawBlurred(blurCanvas, -20, -20, CANVAS_WIDTH + 40, CANVAS_HEIGHT + 40);
+    ctx.restore();
+    ctx.fillStyle = tint || "rgba(0, 0, 0, 0.45)";
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
   function invalidateMazeCache() {
@@ -195,8 +257,8 @@ const Renderer = (() => {
     ctx.translate(cx, cy);
     ctx.rotate(angle);
 
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
 
     // Triangle body: tip at front, flat base at back
     ctx.fillStyle = color;
@@ -207,8 +269,6 @@ const Renderer = (() => {
     ctx.closePath();
     ctx.fill();
 
-    ctx.shadowBlur = 0;
-
     // Triangle border
     ctx.strokeStyle = darkColor;
     ctx.lineWidth = 2;
@@ -217,13 +277,12 @@ const Renderer = (() => {
     ctx.restore();
 
     // Label above player
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 6;
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.fillStyle = color;
     ctx.font = RENDER_CONFIG.FONTS.LABEL;
     ctx.textAlign = "center";
     ctx.fillText(label, cx, player.y - 18);
-    ctx.shadowBlur = 0;
 
     drawHealthBar(player.x, player.y - 12, PLAYER_SIZE, 6, player.health, PLAYER_HEALTH);
   }
@@ -301,13 +360,13 @@ const Renderer = (() => {
     const hudY = RENDER_CONFIG.HUD.PADDING_Y;
 
     // P1 info — left side (neon glow)
-    ctx.shadowColor = COLORS.p1;
-    ctx.shadowBlur = 4;
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.fillStyle = COLORS.p1;
     ctx.font = RENDER_CONFIG.FONTS.HUD;
     ctx.textAlign = "left";
     ctx.fillText(`P1: ${p1.score} kills`, 20, hudY + 16);
-    ctx.shadowBlur = 0;
+    // ...no glow...
     drawHealthBar(
       20,
       hudY + 24,
@@ -318,12 +377,12 @@ const Renderer = (() => {
     );
 
     // P2 info — right side (neon glow)
-    ctx.shadowColor = COLORS.p2;
-    ctx.shadowBlur = 4;
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.fillStyle = COLORS.p2;
     ctx.textAlign = "right";
     ctx.fillText(`P2: ${p2.score} kills`, CANVAS_WIDTH - 20, hudY + 16);
-    ctx.shadowBlur = 0;
+    // ...no glow...
     drawHealthBar(
       CANVAS_WIDTH - 20 - RENDER_CONFIG.HUD.HEALTH_WIDTH,
       hudY + 24,
@@ -334,14 +393,14 @@ const Renderer = (() => {
     );
 
     // Center — maze name + map counter + match timer
-    ctx.shadowColor = COLORS.accent;
-    ctx.shadowBlur = 4;
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.fillStyle = COLORS.accent;
     ctx.textAlign = "center";
     ctx.font = RENDER_CONFIG.FONTS.LABEL;
     const mapLabel = `${activeMaze.name}  (${mazesPlayed + 1}/${MAZE_KEYS.length})`;
     ctx.fillText(mapLabel, CANVAS_WIDTH / 2, hudY + 10);
-    ctx.shadowBlur = 0;
+    // ...no glow...
 
     ctx.font = RENDER_CONFIG.FONTS.HUD_SMALL;
     // Current maze timer
@@ -369,23 +428,44 @@ const Renderer = (() => {
     }
   }
 
+  // ---- Glass Panel Helper ----
+  // Glass card on top of an already-blurred background.
+  // Dark semi-transparent fill creates a legible panel; bright border gives the
+  // frosted-glass separation from the blurred content behind it.
+  function drawGlassPanel(x, y, w, h, r) {
+    ctx.save();
+    // Fill colour comes from the active theme so light themes get a warm-dark
+    // card instead of the default navy.
+    ctx.fillStyle = COLORS.glassPanelBg || "rgba(8, 8, 22, 0.88)";
+    ctx.beginPath();
+    if (r > 0) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+    ctx.fill();
+    // Inner highlight border — gives frosted-glass separation from the blur.
+    ctx.strokeStyle = COLORS.glassPanelBorder || "rgba(255, 255, 255, 0.28)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (r > 0) ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, r); else ctx.rect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // ---- Countdown Overlay ----
   function drawCountdown(seconds) {
-    ctx.fillStyle = COLORS.overlayCountdown;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
+    captureBlurFrame();
+    drawBlurredBackground("rgba(0, 0, 0, 0.62)");
     const text = seconds > 0 ? seconds.toString() : "GO!";
-    const glowColor = seconds > 0 ? COLORS.accent : COLORS.countdownGo;
-
-    ctx.shadowColor = glowColor;
-    ctx.shadowBlur = 30;
-    ctx.fillStyle = glowColor;
+    const color = seconds > 0 ? COLORS.accent : COLORS.countdownGo;
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.font = RENDER_CONFIG.FONTS.COUNTDOWN;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    // Dark stroke so the number reads on any background
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.65)";
+    ctx.lineWidth = 8;
+    ctx.strokeText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    ctx.fillStyle = color;
     ctx.fillText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-    ctx.shadowBlur = 0;
-
     ctx.textBaseline = "alphabetic";
   }
 
@@ -395,95 +475,76 @@ const Renderer = (() => {
     const cy = player.y + PLAYER_SIZE / 2;
     const color = player.id === 1 ? COLORS.p1 : COLORS.p2;
 
-    // Pulsing ghost outline with glow
+    // Pulsing ghost outline (no glow)
     const pulse = 0.2 + 0.15 * Math.sin(Date.now() / 200);
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.globalAlpha = pulse;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
-    ctx.strokeRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
+    ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
+    ctx.strokeRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
     ctx.globalAlpha = 1;
 
-    // Countdown text with glow
-    ctx.shadowColor = COLORS.white;
-    ctx.shadowBlur = 6;
+    // Countdown text (no glow)
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.fillStyle = COLORS.white;
     ctx.font = RENDER_CONFIG.FONTS.RESPAWN;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(Math.ceil(timeLeft / 1000).toString(), cx, cy);
-    ctx.shadowBlur = 0;
     ctx.textBaseline = "alphabetic";
   }
 
   // ---- Game Over Screen ----
   function drawGameOver(winner, isGuest, p1, p2, isDraw) {
-    ctx.fillStyle = COLORS.overlayModal;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    captureBlurFrame();
+    drawBlurredBackground("rgba(0, 0, 0, 0.70)");
+    // Glass card on top of blurred background
+    const panelW = 500, panelH = 270;
+    drawGlassPanel(
+      (CANVAS_WIDTH - panelW) / 2, (CANVAS_HEIGHT - panelH) / 2,
+      panelW, panelH, 20
+    );
 
     const centerX = CANVAS_WIDTH / 2;
     const centerY = CANVAS_HEIGHT / 2;
 
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
     if (isDraw) {
-      // Draw scenario
-      ctx.shadowColor = COLORS.accent;
-      ctx.shadowBlur = 20;
       ctx.fillStyle = COLORS.accent;
       ctx.font = RENDER_CONFIG.FONTS.GAME_OVER;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
       ctx.fillText("IT'S A DRAW!", centerX, centerY - 60);
-      ctx.shadowBlur = 0;
     } else {
       const winColor = winner === 1 ? COLORS.p1 : COLORS.p2;
-
-      // Winner text with neon glow
-      ctx.shadowColor = winColor;
-      ctx.shadowBlur = 20;
       ctx.fillStyle = winColor;
       ctx.font = RENDER_CONFIG.FONTS.GAME_OVER;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
       ctx.fillText(`PLAYER ${winner} WINS!`, centerX, centerY - 60);
-      ctx.shadowBlur = 0;
     }
 
-    // Final scores
     if (p1 && p2) {
       ctx.font = RENDER_CONFIG.FONTS.HUD;
-      ctx.textAlign = "center";
-
       ctx.fillStyle = COLORS.p1;
-      ctx.shadowColor = COLORS.p1;
-      ctx.shadowBlur = 6;
       ctx.fillText(`P1: ${p1.score} kills`, centerX - 80, centerY);
-      ctx.shadowBlur = 0;
-
-      ctx.fillStyle = COLORS.textDim;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.70)";
       ctx.fillText("vs", centerX, centerY);
-
       ctx.fillStyle = COLORS.p2;
-      ctx.shadowColor = COLORS.p2;
-      ctx.shadowBlur = 6;
       ctx.fillText(`P2: ${p2.score} kills`, centerX + 80, centerY);
-      ctx.shadowBlur = 0;
-
-      // "TIME'S UP" label
-      ctx.fillStyle = COLORS.textMuted;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.50)";
       ctx.font = RENDER_CONFIG.FONTS.LABEL;
-      ctx.fillText("TIME'S UP", centerX, centerY + 30);
+      ctx.fillText("TIME'S UP", centerX, centerY + 35);
     }
-
-    ctx.fillStyle = COLORS.textDim;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.80)";
     ctx.font = RENDER_CONFIG.FONTS.GAME_OVER_SUB;
     ctx.fillText(
       isGuest ? "Spin joystick to request restart" : "Tap / press R to restart",
       centerX,
-      centerY + 65,
+      centerY + 70,
     );
-
     ctx.textBaseline = "alphabetic";
   }
 
@@ -511,11 +572,15 @@ const Renderer = (() => {
 
   // ---- Disconnect Overlay ----
   function drawDisconnected() {
-    ctx.fillStyle = COLORS.overlayModal;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    ctx.shadowColor = COLORS.disconnectAlert;
-    ctx.shadowBlur = 20;
+    captureBlurFrame();
+    drawBlurredBackground("rgba(0, 0, 0, 0.70)");
+    const panelW = 460, panelH = 160;
+    drawGlassPanel(
+      (CANVAS_WIDTH - panelW) / 2, (CANVAS_HEIGHT - panelH) / 2,
+      panelW, panelH, 20
+    );
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.fillStyle = COLORS.disconnectAlert;
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT;
     ctx.textAlign = "center";
@@ -525,37 +590,37 @@ const Renderer = (() => {
       CANVAS_WIDTH / 2,
       CANVAS_HEIGHT / 2 - 20,
     );
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = COLORS.textMuted;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT_SUB;
     ctx.fillText(
       "Returning to lobby...",
       CANVAS_WIDTH / 2,
-      CANVAS_HEIGHT / 2 + 25,
+      CANVAS_HEIGHT / 2 + 28,
     );
     ctx.textBaseline = "alphabetic";
   }
 
   function drawReconnecting(secondsLeft) {
-    ctx.fillStyle = COLORS.overlayModal;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    ctx.shadowColor = COLORS.reconnectAlert;
-    ctx.shadowBlur = 20;
+    captureBlurFrame();
+    drawBlurredBackground("rgba(0, 0, 0, 0.70)");
+    const panelW = 420, panelH = 160;
+    drawGlassPanel(
+      (CANVAS_WIDTH - panelW) / 2, (CANVAS_HEIGHT - panelH) / 2,
+      panelW, panelH, 20
+    );
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.fillStyle = COLORS.reconnectAlert;
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("CONNECTION LOST", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = COLORS.textLight;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.80)";
     ctx.font = RENDER_CONFIG.FONTS.DISCONNECT_SUB;
     ctx.fillText(
       `Reconnecting\u2026 (${secondsLeft}s)`,
       CANVAS_WIDTH / 2,
-      CANVAS_HEIGHT / 2 + 25,
+      CANVAS_HEIGHT / 2 + 28,
     );
     ctx.textBaseline = "alphabetic";
   }
@@ -571,30 +636,42 @@ const Renderer = (() => {
 
   function drawMazeAnnouncement(dt) {
     if (!mazeAnnouncement || mazeAnnouncementTimer <= 0) return;
+
+    // Capture once at the very start of the announcement (when timer is fresh).
+    // After that we just reuse the captured frame so the blur stays stable.
+    if (mazeAnnouncementTimer >= RENDER_CONFIG.EFFECTS.MAZE_ANNOUNCE_MS - 16) {
+      captureBlurFrame();
+    }
+
     mazeAnnouncementTimer -= dt;
+    const alpha = Math.min(1, mazeAnnouncementTimer / 500);
 
-    const alpha = Math.min(1, mazeAnnouncementTimer / 500); // fade out last 500ms
-    ctx.fillStyle = `rgba(0, 0, 0, ${0.75 * alpha})`;
-    ctx.fillRect(0, CANVAS_HEIGHT / 2 - 60, CANVAS_WIDTH, 120);
-
+    ctx.save();
     ctx.globalAlpha = alpha;
 
-    // Map name with neon glow
-    ctx.shadowColor = COLORS.accent;
-    ctx.shadowBlur = 20;
-    ctx.fillStyle = COLORS.accent;
-    ctx.font = RENDER_CONFIG.FONTS.ANNOUNCE;
+    // Blurred full-screen backdrop
+    _drawBlurred(blurCanvas, -20, -20, CANVAS_WIDTH + 40, CANVAS_HEIGHT + 40);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Full-width glass banner strip
+    const bannerH = 130;
+    const bannerY = (CANVAS_HEIGHT - bannerH) / 2;
+    drawGlassPanel(0, bannerY, CANVAS_WIDTH, bannerH, 0);
+
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    // Sub-label — uppercase muted tag above the map name
+    ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.font = RENDER_CONFIG.FONTS.ANNOUNCE_SUB;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(mazeAnnouncement, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 10);
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = COLORS.textMuted;
-    ctx.font = RENDER_CONFIG.FONTS.ANNOUNCE_SUB;
-    ctx.fillText("MAP CHANGED", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 25);
-    ctx.globalAlpha = 1;
-    ctx.textBaseline = "alphabetic";
-
+    ctx.fillText("MAP CHANGED", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 30);
+    // Map name — bold accent, large
+    ctx.fillStyle = COLORS.accent;
+    ctx.font = RENDER_CONFIG.FONTS.ANNOUNCE;
+    ctx.fillText(mazeAnnouncement, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 16);
+    ctx.restore();
     if (mazeAnnouncementTimer <= 0) mazeAnnouncement = null;
   }
 

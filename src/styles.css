@@ -178,9 +178,7 @@ h1 {
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 4px;
-  text-shadow:
-    0 0 20px var(--accent-glow),
-    0 0 40px rgba(255, 107, 0, 0.15);
+  text-shadow: none;
   animation: fadeUp 0.8s var(--ease-out) both;
 }
 
@@ -340,7 +338,7 @@ h1 {
   letter-spacing: 3px;
   text-transform: uppercase;
   color: var(--accent);
-  text-shadow: 0 0 10px var(--accent-dim);
+  text-shadow: none;
   margin-bottom: 1.5rem;
   font-weight: 500;
 }
@@ -354,7 +352,7 @@ h1 {
   color: var(--accent);
   margin-bottom: 0.4rem;
   user-select: all;
-  text-shadow: 0 0 14px var(--accent-glow);
+  text-shadow: none;
 }
 
 /* Decorative line under room code */
@@ -542,7 +540,7 @@ canvas {
   letter-spacing: 3px;
   margin-bottom: 0.75rem;
   text-transform: uppercase;
-  text-shadow: 0 0 10px var(--accent-dim);
+  text-shadow: none;
 }
 
 #maze-grid {
@@ -776,7 +774,7 @@ canvas {
   letter-spacing: 3px;
   text-transform: uppercase;
   color: var(--accent);
-  text-shadow: 0 0 12px var(--accent-glow);
+  text-shadow: none;
 }
 
 #settingsClose {
