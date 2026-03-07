@@ -33,6 +33,27 @@
   /* Status */
   --status-ok: #2ecc71;
   --status-error: #e74c3c;
+
+  /* Button text on filled accent buttons */
+  --btn-text: #000;
+
+  /* Overlay / modal text */
+  --overlay-text: #fff;
+
+  /* Author credit link */
+  --author-link: #00d4ff;
+
+  /* Keyboard hint widget */
+  --key-border: #444;
+  --key-text: #ccc;
+
+  /* Leave-cancel button hover background */
+  --leave-cancel-hover: #222240;
+
+  /* Mobile shoot button */
+  --shoot-btn-bg: #c0392b;
+  --shoot-btn-border: #e74c3c;
+  --shoot-btn-text: #fff;
 }
 
 * {
@@ -114,7 +135,7 @@ h1 {
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #000;
+  color: var(--btn-text);
 }
 
 .btn-primary:hover {
@@ -131,7 +152,7 @@ h1 {
 
 .btn-secondary:hover {
   background: var(--accent);
-  color: #000;
+  color: var(--btn-text);
 }
 
 .btn-small {
@@ -296,7 +317,7 @@ canvas {
 
 #overlay h2 {
   font-size: 4rem;
-  color: #fff;
+  color: var(--overlay-text);
 }
 
 #overlay p {
@@ -379,20 +400,52 @@ canvas {
   font-style: italic;
 }
 
+/* ---- Theme Selector ---- */
+.theme-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 0.9rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+}
+
+.theme-selector-row label {
+  text-transform: uppercase;
+}
+
+.theme-selector-row select {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dark);
+  color: var(--text-primary);
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  cursor: pointer;
+  outline: none;
+  letter-spacing: 1px;
+}
+
+.theme-selector-row select:focus {
+  border-color: var(--accent);
+}
+
 .author-credit {
   font-size: 0.7rem;
-  color: #666;
+  color: var(--text-dim);
   margin-top: 1.5rem;
 }
 
 .author-credit a {
-  color: #00d4ff;
+  color: var(--author-link);
   text-decoration: none;
   transition: color 0.2s;
 }
 
 .author-credit a:hover {
-  color: #fff;
+  color: var(--overlay-text);
   text-decoration: underline;
 }
 
@@ -417,11 +470,11 @@ canvas {
 .key {
   display: inline-block;
   background: var(--bg-panel);
-  border: 1px solid #444;
+  border: 1px solid var(--key-border);
   border-radius: 3px;
   padding: 1px 6px;
   font-size: 0.7rem;
-  color: #ccc;
+  color: var(--key-text);
 }
 
 /* ---- Back Button (top-left, mirrors mute button) ---- */
@@ -513,7 +566,7 @@ canvas {
 
 #leaveCancel:hover {
   border-color: var(--text-muted);
-  background: #222240;
+  background: var(--leave-cancel-hover);
 }
 
 #leaveConfirm {
@@ -533,7 +586,7 @@ canvas {
 
 #leaveConfirm:hover {
   background: var(--status-error);
-  color: #fff;
+  color: var(--overlay-text);
 }
 
 /* ---- Mute Toggle Button ---- */
@@ -680,9 +733,9 @@ canvas {
     width: 90px;
     height: 90px;
     border-radius: 50%;
-    background: #c0392b;
-    border: 3px solid #e74c3c;
-    color: #fff;
+    background: var(--shoot-btn-bg);
+    border: 3px solid var(--shoot-btn-border);
+    color: var(--shoot-btn-text);
     font-size: 2.2rem;
     cursor: pointer;
     display: flex;
@@ -698,7 +751,7 @@ canvas {
   }
 
   #shoot-btn:active {
-    background: #e74c3c;
+    background: var(--shoot-btn-border);
     transform: scale(0.92);
   }
 

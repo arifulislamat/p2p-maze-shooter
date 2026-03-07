@@ -195,6 +195,12 @@
         Maps rotate randomly every minutes during gameplay
       </p>
 
+      <!-- Theme Selector -->
+      <div class="theme-selector-row">
+        <label for="theme-select">THEME</label>
+        <select id="theme-select"></select>
+      </div>
+
       <footer class="author-credit">
         Made by
         <a href="https://arifulislamat.com" target="_blank" rel="noopener"
@@ -234,12 +240,12 @@
           const ch = ph / maze.data.length;
           maze.data.forEach((row, r) => {
             row.forEach((cell, c) => {
-              if (cell === 1) pctx.fillStyle = "#3a3a5c";
-              else if (cell === 2) pctx.fillStyle = "#00d4ff";
-              else if (cell === 3) pctx.fillStyle = "#ff4444";
-              else if (cell === 4) pctx.fillStyle = "#44ff44";
-              else if (cell === 5) pctx.fillStyle = "#ffaa00";
-              else pctx.fillStyle = "#0a0a1a";
+              if (cell === 1) pctx.fillStyle = COLORS.wall;
+              else if (cell === 2) pctx.fillStyle = COLORS.p1;
+              else if (cell === 3) pctx.fillStyle = COLORS.p2;
+              else if (cell === 4) pctx.fillStyle = COLORS.zombie;
+              else if (cell === 5) pctx.fillStyle = COLORS.bomb;
+              else pctx.fillStyle = COLORS.background;
               pctx.fillRect(c * cw, r * ch, cw, ch);
             });
           });
@@ -261,6 +267,23 @@
       // Build after DOM + constants are ready
       // Shared helper: read #room=CODE from the URL hash and open join UI.
       // Returns true if a room code was found and acted on.
+      function initThemeSelector() {
+        const select = document.getElementById("theme-select");
+        if (!select) return;
+        ThemeManager.getThemeList().forEach(({ id, label }) => {
+          const opt = document.createElement("option");
+          opt.value = id;
+          opt.textContent = label;
+          select.appendChild(opt);
+        });
+        select.value = ThemeManager.active ? ThemeManager.active.id : ThemeRegistry.defaultTheme;
+        select.addEventListener("change", e => ThemeManager.apply(e.target.value));
+        // Keep selector in sync if theme changes from another source
+        document.addEventListener("themechange", (e) => {
+          select.value = e.detail.id;
+        });
+      }
+
       function openRoomFromHash() {
         const hashParams = new URLSearchParams(window.location.hash.slice(1));
         const queryParams = new URLSearchParams(window.location.search);
@@ -284,6 +307,7 @@
 
       window.addEventListener("DOMContentLoaded", () => {
         setTimeout(buildMazeSelector, 0);
+        initThemeSelector();
 
         // Auto-rejoin saved session (host/guest page reload)
         if (Game.rejoinSession()) return;
@@ -455,6 +479,10 @@
 
     <!-- ===== Scripts (order matters) ===== -->
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+    <!-- Theme system: load before constants.js so registry is ready at startup -->
+    <script src="themes/retro-neon.js"></script>
+    <script src="themes/index.js"></script>
+    <script src="core/ThemeManager.js"></script>
     <script src="constants.js"></script>
     <script src="sound.js"></script>
     <script src="physics.js"></script>
