@@ -10,7 +10,10 @@
 
 const ThemeRegistry = {
   themes: {
-    [retroNeonTheme.id]: retroNeonTheme,
+    [retroNeonTheme.id]:   retroNeonTheme,
+    [midnightVoidTheme.id]: midnightVoidTheme,
+    [sandstormTheme.id]:    sandstormTheme,
+    [cyberSakuraTheme.id]:  cyberSakuraTheme,
   },
   defaultTheme: "retro-neon",
 };

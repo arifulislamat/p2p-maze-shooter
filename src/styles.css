@@ -3,6 +3,7 @@
    Retro Maze Combat — Unified Orange/Dark Theme
    =========================================== */
 
+/* ---- CSS Custom Properties (fallback defaults, overridden by ThemeManager) ---- */
 :root {
   /* Backgrounds (darkest to lightest) */
   --bg-deep: #07070f;
@@ -54,14 +55,20 @@
   --shoot-btn-bg: #c0392b;
   --shoot-btn-border: #e74c3c;
   --shoot-btn-text: #fff;
+
+  /* Shared animation curves */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* ---- Reset ---- */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+/* ---- Base ---- */
 body {
   font-family: "Courier New", Courier, monospace;
   background: var(--bg-deep);
@@ -72,6 +79,7 @@ body {
   justify-content: center;
   min-height: 100vh;
   overflow: hidden;
+  transition: background 0.5s var(--ease-out), color 0.4s var(--ease-out);
 }
 
 /* CRT scanline overlay */
@@ -88,8 +96,58 @@ body::after {
     transparent 1px,
     transparent 3px
   );
+  transition: opacity 0.5s;
 }
 
+/* ---- Entrance Animations ---- */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes blurReveal {
+  0% {
+    filter: blur(12px) brightness(0.7);
+    opacity: 0;
+    transform: scale(1.02);
+  }
+  50% {
+    filter: blur(3px) brightness(0.9);
+    opacity: 0.8;
+  }
+  100% {
+    filter: blur(0) brightness(1);
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--accent-glow);
+  }
+  50% {
+    box-shadow: 0 0 24px 4px var(--accent-glow);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes dotBreathe {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* ---- Title ---- */
 h1 {
   font-size: 2rem;
   margin-bottom: 0.5rem;
@@ -99,18 +157,21 @@ h1 {
   text-shadow:
     0 0 20px var(--accent-glow),
     0 0 40px rgba(255, 107, 0, 0.15);
+  animation: fadeUp 0.8s var(--ease-out) both;
 }
 
 /* ---- Lobby ---- */
 #lobby {
   text-align: center;
   padding: 2rem;
+  animation: blurReveal 1s var(--ease-out) both;
 }
 
 #lobby p {
   color: var(--text-muted);
   margin-bottom: 1.5rem;
   font-size: 0.9rem;
+  animation: fadeUp 0.7s var(--ease-out) 0.15s both;
 }
 
 .lobby-buttons {
@@ -118,8 +179,10 @@ h1 {
   gap: 1rem;
   justify-content: center;
   flex-wrap: wrap;
+  animation: fadeUp 0.7s var(--ease-out) 0.4s both;
 }
 
+/* ---- Buttons ---- */
 .btn {
   padding: 0.75rem 2rem;
   font-family: "Courier New", Courier, monospace;
@@ -129,7 +192,25 @@ h1 {
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 2px;
-  transition: all 0.2s ease;
+  transition: all 0.25s var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shimmer hover effect on all buttons */
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 33%, rgba(255,255,255,0.06) 50%, transparent 67%);
+  background-size: 200% 100%;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.btn:hover::after {
+  opacity: 1;
+  animation: shimmer 1.5s linear infinite;
 }
 
 .btn-primary {
@@ -141,7 +222,13 @@ h1 {
 .btn-primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  box-shadow: 0 0 14px var(--accent-glow);
+  box-shadow: 0 0 18px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 .btn-secondary {
@@ -153,6 +240,7 @@ h1 {
 .btn-secondary:hover {
   background: var(--accent);
   color: var(--btn-text);
+  transform: translateY(-1px);
 }
 
 .btn-small {
@@ -160,13 +248,12 @@ h1 {
   font-size: 0.8rem;
   letter-spacing: 1px;
   opacity: 0.7;
-  transition:
-    opacity 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: opacity 0.25s var(--ease-out), box-shadow 0.25s, transform 0.25s;
 }
 
 .btn-small:hover {
   opacity: 1;
+  transform: translateY(-1px);
 }
 
 /* ---- Connection UI ---- */
@@ -199,6 +286,7 @@ h1 {
   user-select: all;
   text-shadow: 0 0 14px var(--accent-glow);
   font-weight: bold;
+  animation: pulseGlow 3s ease infinite;
 }
 
 #connectionUI input {
@@ -213,10 +301,11 @@ h1 {
   text-transform: uppercase;
   width: 280px;
   outline: none;
+  transition: box-shadow 0.3s var(--ease-out), border-color 0.3s;
 }
 
 #connectionUI input:focus {
-  box-shadow: 0 0 10px var(--accent-glow);
+  box-shadow: 0 0 14px var(--accent-glow);
 }
 
 #connectionUI input::placeholder {
@@ -225,7 +314,7 @@ h1 {
   text-transform: uppercase;
 }
 
-/* Share link removed — using copy button only */\n", "oldString": ".share-link {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 0.5rem;\n  margin-bottom: 0.5rem;\n  flex-wrap: wrap;\n}\n\n.share-link a {\n  color: var(--accent);\n  font-size: 0.75rem;\n  letter-spacing: 1px;\n  text-decoration: none;\n  max-width: 320px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  border-bottom: 1px dashed var(--accent-dim);\n}\n\n.share-link a:hover {\n  color: #000;\n  background: var(--accent);\n  padding: 0 0.25rem;\n}
+/* Share link removed — using copy button only */
 
 .host-actions {
   display: flex;
@@ -292,6 +381,7 @@ canvas {
   border: 3px solid var(--border-dark);
   display: block;
   background: var(--bg-dark);
+  transition: border-color 0.4s var(--ease-out);
 }
 
 /* ---- Overlay (countdown, game over) ---- */
@@ -334,6 +424,7 @@ canvas {
 /* ---- Maze Selector ---- */
 #maze-selector {
   margin: 1.5rem 0;
+  animation: fadeUp 0.7s var(--ease-out) 0.25s both;
 }
 
 #maze-selector h3 {
@@ -358,18 +449,38 @@ canvas {
   border: 2px solid var(--border-dark);
   padding: 0.5rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s var(--ease-out);
   text-align: center;
   width: 120px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Hover shimmer effect */
+.maze-option::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 33%, rgba(255,255,255,0.04) 50%, transparent 67%);
+  background-size: 200% 100%;
+  opacity: 0;
+  transition: opacity 0.3s;
 }
 
 .maze-option:hover {
   border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.maze-option:hover::after {
+  opacity: 1;
+  animation: shimmer 2s linear infinite;
 }
 
 .maze-option.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 12px var(--accent-glow);
+  box-shadow: 0 0 12px var(--accent-glow), 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .maze-option canvas {
@@ -385,12 +496,18 @@ canvas {
   letter-spacing: 1px;
   margin-bottom: 0.2rem;
   font-weight: bold;
+  transition: color 0.3s;
 }
 
 .maze-desc {
   font-size: 0.5rem;
   color: var(--text-dim);
   line-height: 1.4;
+  transition: color 0.3s;
+}
+
+.maze-option:hover .maze-desc {
+  color: var(--text-muted);
 }
 
 .maze-rotation-note {
@@ -398,6 +515,7 @@ canvas {
   color: var(--text-dim);
   margin-top: 1rem;
   font-style: italic;
+  animation: fadeUp 0.7s var(--ease-out) 0.35s both;
 }
 
 /* ---- Theme Selector ---- */
@@ -410,6 +528,7 @@ canvas {
   font-size: 0.7rem;
   color: var(--text-muted);
   letter-spacing: 2px;
+  animation: fadeUp 0.7s var(--ease-out) 0.5s both;
 }
 
 .theme-selector-row label {
@@ -422,20 +541,24 @@ canvas {
   color: var(--text-primary);
   font-family: "Courier New", Courier, monospace;
   font-size: 0.7rem;
-  padding: 3px 8px;
+  padding: 4px 10px;
   cursor: pointer;
   outline: none;
   letter-spacing: 1px;
+  border-radius: 3px;
+  transition: border-color 0.25s, box-shadow 0.25s;
 }
 
 .theme-selector-row select:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-dim);
 }
 
 .author-credit {
   font-size: 0.7rem;
   color: var(--text-dim);
   margin-top: 1.5rem;
+  animation: fadeUp 0.7s var(--ease-out) 0.6s both;
 }
 
 .author-credit a {
@@ -475,6 +598,7 @@ canvas {
   padding: 1px 6px;
   font-size: 0.7rem;
   color: var(--key-text);
+  transition: border-color 0.2s, color 0.2s;
 }
 
 /* ---- Back Button (top-left, mirrors mute button) ---- */
@@ -494,7 +618,7 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.25s var(--ease-out), background 0.25s, transform 0.25s;
   user-select: none;
   -webkit-user-select: none;
   padding: 0;
@@ -507,6 +631,7 @@ canvas {
 #backBtn:hover {
   border-color: var(--status-error);
   background: var(--bg-elevated);
+  transform: scale(1.05);
 }
 
 /* ---- Leave Confirmation Modal ---- */
@@ -518,6 +643,8 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 #leaveModalBox {
@@ -528,7 +655,8 @@ canvas {
   text-align: center;
   max-width: 320px;
   width: 90%;
-  box-shadow: 0 0 32px rgba(0,0,0,0.6);
+  box-shadow: 0 0 32px rgba(0, 0, 0, 0.6);
+  animation: fadeUp 0.3s var(--ease-spring) both;
 }
 
 #leaveModalMsg {
@@ -561,7 +689,7 @@ canvas {
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.2s var(--ease-out), background 0.2s;
 }
 
 #leaveCancel:hover {
@@ -581,12 +709,13 @@ canvas {
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.2s var(--ease-out), color 0.2s, transform 0.2s;
 }
 
 #leaveConfirm:hover {
   background: var(--status-error);
   color: var(--overlay-text);
+  transform: translateY(-1px);
 }
 
 /* ---- Mute Toggle Button ---- */
@@ -606,7 +735,7 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.25s var(--ease-out), background 0.25s, transform 0.25s;
   user-select: none;
   padding: 0;
   line-height: 1;
@@ -615,6 +744,7 @@ canvas {
 #muteBtn:hover {
   border-color: var(--accent);
   background: var(--bg-elevated);
+  transform: scale(1.05);
 }
 
 /* ================ Mobile Touch Controls ================ */
@@ -644,7 +774,7 @@ canvas {
     padding-bottom: 0.5rem;
   }
 
-  /* ---- Lobby: maze selector becomes a horizontal scroll-snap carousel ---- */
+  /* Maze carousel */
   #maze-selector {
     margin: 0.6rem 0;
     width: 100%;
