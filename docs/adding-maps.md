@@ -8,16 +8,17 @@ All maps are defined in `src/constants.js` inside the `MAZES` object. Adding a m
 
 Every maze is a 2D array of integers: **15 rows × 21 columns**. Each integer is a cell type:
 
-| Value | Constant | Meaning |
-|---|---|---|
-| `0` | `CELL_PATH` | Walkable floor |
-| `1` | `CELL_WALL` | Solid wall |
-| `2` | `CELL_P1` | P1 (blue) spawn point |
-| `3` | `CELL_P2` | P2 (red) spawn point |
-| `4` | `CELL_ZOMBIE` | Zombie spawn hint (marks where zombies can appear) |
-| `5` | `CELL_BOMB` | Bomb pre-placement hint |
+| Value | Constant      | Meaning                                            |
+| ----- | ------------- | -------------------------------------------------- |
+| `0`   | `CELL_PATH`   | Walkable floor                                     |
+| `1`   | `CELL_WALL`   | Solid wall                                         |
+| `2`   | `CELL_P1`     | P1 (blue) spawn point                              |
+| `3`   | `CELL_P2`     | P2 (red) spawn point                               |
+| `4`   | `CELL_ZOMBIE` | Zombie spawn hint (marks where zombies can appear) |
+| `5`   | `CELL_BOMB`   | Bomb pre-placement hint                            |
 
 A few rules:
+
 - The entire outer border must be `1` (wall). Players can't leave the arena.
 - Include at least one `2` and one `3` (spawn points for each player). Multiple spawn cells are fine — the game picks the one farthest from the killer on respawn.
 - `4` and `5` mark positions that `parseMaze()` collects, but game code still uses random path-cell spawning for runtime bomb/zombie placement. They serve as design hints and are rendered as plain floor at run time.
@@ -95,7 +96,7 @@ The map dropdown in the lobby is built dynamically in `src/index.html` by iterat
 
 ```html
 <script>
-  MAZE_KEYS.forEach(key => {
+  MAZE_KEYS.forEach((key) => {
     const opt = document.createElement("option");
     opt.value = key;
     opt.textContent = MAZES[key].name + " — " + MAZES[key].desc;

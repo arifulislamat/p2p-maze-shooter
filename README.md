@@ -27,7 +27,8 @@ A real-time peer-to-peer multiplayer shooter built entirely with **vanilla JavaS
 - **6 unique maze arenas** — Each with distinct layouts: Arena Classic, The Labyrinth, Bomb Alley, Fortress, Snake Pit, Crossfire.
 - **Automatic map rotation** — Maps shuffle and rotate every 60 seconds. After 6 maps (6 min), highest score wins.
 - **Dynamic hazards** — Bombs spawn randomly with a heartbeat fuse animation and area-of-effect blast. Zombies roam the maze and freeze you on contact.
-- **Retro-neon aesthetic** — Scanline overlay, CRT glow effects, pulsing neon colors, and a dark arcade palette.
+- **Power-ups** — Health packs, speed boosts, and weapon pickups (rapid-fire, scatter-shot) spawn on the battlefield.
+- **4 built-in themes** — Retro Neon, Midnight Void, Sandstorm, and Cyber Sakura. Switch themes from the settings panel. [Create your own](docs/adding-themes.md) with zero engine changes.
 - **Zero build step** — Pure HTML/CSS/JS. No bundler, no transpiler, no `npm install`. Clone and open.
 
 ## Quick Start
@@ -46,9 +47,9 @@ git clone https://github.com/arifulislamat/p2p-maze-shooter.git
 cd p2p-maze-shooter
 
 # Serve locally (any static server works)
-npx serve .
+cd src && npx serve .
 # or
-python3 -m http.server 8000
+cd src && python3 -m http.server 8000
 ```
 
 Then open `http://localhost:8000` in your browser.
@@ -57,14 +58,13 @@ Then open `http://localhost:8000` in your browser.
 
 ### Browser Support
 
-| Browser     | Status       | Notes |
-| ----------- | ------------ | ----- |
-| Chrome      | ✅ Supported |       |
-| Edge        | ✅ Supported |       |
-| Brave       | ✅ Supported |       |
-| Firefox.    | ✅ Supported |       |
-| Safari      | ✅ Supported |       |
-
+| Browser  | Status       | Notes |
+| -------- | ------------ | ----- |
+| Chrome   | ✅ Supported |       |
+| Edge     | ✅ Supported |       |
+| Brave    | ✅ Supported |       |
+| Firefox. | ✅ Supported |       |
+| Safari   | ✅ Supported |       |
 
 #### Local Network Play (Same Wi-Fi, Different Devices)
 
@@ -126,13 +126,22 @@ If you and your opponent are on the **same local network** (e.g., same Wi-Fi) **
 ## Architecture
 
 ```
-index.html          Entry point + lobby UI
-├── constants.js    Game config, maze data, parseMaze()
-├── physics.js      Collision detection (AABB)
-├── renderer.js     Canvas rendering, HUD, effects
-├── network.js      PeerJS wrapper, room codes, connection lifecycle
-├── game.js         Game loop, state machine, input, networking
-└── styles.css      Lobby + HUD styles
+index.html              Entry point + lobby UI
+├── themes/
+│   ├── retro-neon.js   Built-in theme: Retro Neon (default reference)
+│   ├── midnight-void.js
+│   ├── sandstorm.js
+│   ├── cyber-sakura.js
+│   └── index.js        Theme registry
+├── core/
+│   └── ThemeManager.js Runtime theme switcher
+├── constants.js        Game config, maze data, parseMaze()
+├── sound.js            Procedural audio (Web Audio API, zero files)
+├── physics.js          Collision detection (AABB)
+├── renderer.js         Canvas rendering, HUD, effects
+├── network.js          PeerJS wrapper, room codes, connection lifecycle
+├── game.js             Game loop, state machine, input, networking
+└── styles.css          Lobby + HUD styles
 ```
 
 All modules use the **IIFE pattern** (Immediately Invoked Function Expression) to avoid polluting the global scope.
@@ -144,7 +153,7 @@ Host                              Guest
 ┌──────────┐   WebRTC (PeerJS)   ┌──────────┐
 │ Input    │◄───── inputs ───────│ Input    │
 │ Physics  │                     │          │
-│ Game Loop│───── state & corr. ─►│ Renderer │
+│ Game Loop│─── state & corr. ──►│ Renderer │
 │ Renderer │                     │          │
 └──────────┘                     └──────────┘
 ```
@@ -165,12 +174,15 @@ The **host** runs the authoritative simulation (physics, collisions, spawning) a
 | Rule               | Detail                                                               |
 | ------------------ | -------------------------------------------------------------------- |
 | **Match duration** | 6 maps × 1 min = 6 minutes total                                     |
-| **Instant win**    | First to 5 kills wins immediately                                    |
+| **Instant win**    | First to 8 kills wins immediately                                    |
 | **Timeout win**    | After 6 minutes, highest kill count wins                             |
 | **Tiebreaker**     | If kills are equal, higher health wins; otherwise it's a draw        |
 | **Respawn**        | 3-second respawn timer after death                                   |
-| **Bombs**          | Spawn dynamically (cap ramps 1→7), heartbeat fuse, area blast damage |
+| **Bombs**          | Spawn dynamically (cap ramps 3→4), heartbeat fuse, area blast damage |
 | **Zombies**        | Roam the maze, freeze players for 3 seconds on contact               |
+| **Health packs**   | Spawn periodically, restore 3 HP on pickup                           |
+| **Speed boosts**   | 4-second 1.6× speed multiplier                                       |
+| **Weapon pickups** | Rapid-fire (faster shots) or scatter (3-bullet spread) for 5 seconds |
 
 ## Tech Stack
 
@@ -181,6 +193,16 @@ The **host** runs the authoritative simulation (physics, collisions, spawning) a
 | Networking  | WebRTC via [PeerJS](https://peerjs.com/) (CDN) |
 | Styling     | Vanilla CSS with CSS variables                 |
 | Build tools | None — zero dependencies                       |
+
+## Documentation
+
+| Guide                                  | Description                                                |
+| -------------------------------------- | ---------------------------------------------------------- |
+| [Architecture](docs/architecture.md)   | File structure, game loop, state machine, networking model |
+| [Adding Themes](docs/adding-themes.md) | Step-by-step guide to creating a new visual theme          |
+| [Adding Maps](docs/adding-maps.md)     | How to add a new maze arena                                |
+| [Config Tuning](docs/config-tuning.md) | Every gameplay constant explained                          |
+| [Networking](docs/networking.md)       | P2P protocol, message types, reconnection                  |
 
 ## Contributing
 
