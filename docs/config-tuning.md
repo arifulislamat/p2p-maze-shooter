@@ -44,7 +44,7 @@ The main gameplay config. Everything from player speed to bomb blast radius goes
 
 | Key | Default | What it does |
 |---|---|---|
-| `WIN` | `12` | First player to reach this many kills wins immediately, regardless of time remaining. |
+| `WIN` | `8` | First player to reach this many kills wins immediately, regardless of time remaining. |
 
 ---
 
@@ -63,8 +63,8 @@ The main gameplay config. Everything from player speed to bomb blast radius goes
 |---|---|---|
 | `SPAWN_INTERVAL_MS` | `5000` | How often a new bomb can spawn (ms). |
 | `FUSE_MS` | `1500` | Delay from bomb placement to detonation. Longer = more time to escape. |
-| `BLAST_RADIUS` | `120` | Explosion radius in px. |
-| `BLAST_DAMAGE` | `2` | HP removed on direct hit. |
+| `BLAST_RADIUS` | `200` | Explosion radius in px. |
+| `BLAST_DAMAGE` | `4` | HP removed on direct hit. |
 | `BLAST_ANIM_MS` | `500` | How long the explosion visual lingers. |
 | `MAX_BOMBS` | `4` | Hard cap on simultaneous active bombs. The active cap ramps up over the maze lifespan from `INITIAL_COUNT` to this value. |
 | `INITIAL_COUNT` | `3` | How many bombs are allowed to be active at the very start of a maze. |

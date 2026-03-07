@@ -6,13 +6,25 @@ A quick guide to how the game is structured, what each file does, and how the pi
 
 ## File Load Order
 
-Scripts are loaded in strict order in `src/index.html`:
+Scripts are loaded in strict order in `src/index.html`. **Theme files must load before `constants.js`** so theme data is available when the registry is first queried:
 
 ```
-constants.js → sound.js → physics.js → renderer.js → network.js → game.js
+PeerJS (CDN)
+  → themes/retro-neon.js
+  → themes/midnight-void.js
+  → themes/sandstorm.js
+  → themes/cyber-sakura.js
+  → themes/index.js          (theme registry)
+  → core/ThemeManager.js      (runtime theme switcher)
+  → constants.js
+  → sound.js
+  → physics.js
+  → renderer.js
+  → network.js
+  → game.js
 ```
 
-Each file is an IIFE that exposes a single global (`CONFIG`/`Sound`/`Physics`/`Renderer`/`Network`/`Game`). There is no bundler — just include order.
+Each file is an IIFE (or plain global object) that exposes a single global. There is no bundler — just include order.
 
 ---
 
@@ -20,6 +32,12 @@ Each file is an IIFE that exposes a single global (`CONFIG`/`Sound`/`Physics`/`R
 
 | File | Global | Responsibility |
 |---|---|---|
+| `themes/retro-neon.js` | `retroNeonTheme` | Built-in default theme definition (colors, fonts, rendering, CSS vars). |
+| `themes/midnight-void.js` | `midnightVoidTheme` | Midnight Void theme — ultra-dark with indigo/cyan accents. |
+| `themes/sandstorm.js` | `sandstormTheme` | Sandstorm theme — warm desert tones for daytime play. |
+| `themes/cyber-sakura.js` | `cyberSakuraTheme` | Cyber Sakura theme — cyberpunk with cherry blossom pink. |
+| `themes/index.js` | `ThemeRegistry` | Theme registry. Holds all registered themes keyed by `id`, declares `defaultTheme`. |
+| `core/ThemeManager.js` | `ThemeManager` | Runtime theme switcher. Mutates `CONFIG.COLORS` and `RENDER_CONFIG.FONTS` in-place, injects CSS vars, dispatches `themechange` event. |
 | `constants.js` | `CONFIG` | All gameplay tuning values and maze data. Also exports flat aliases (`PLAYER_SPEED`, `COLORS`, etc.) used everywhere else. |
 | `sound.js` | `Sound` | Procedural audio via Web Audio API. Zero sound files — every effect is synthesized. |
 | `physics.js` | `Physics` | AABB wall collision and bounds clamping. Reads `activeMaze.walls`. |
@@ -113,3 +131,53 @@ Never mutate `activeMaze` directly — always call `parseMaze()` so all consumer
 Mobile portrait layout adds a `#touch-controls` bar at the bottom. The left half maps to shooting (`Space`), the right half is a floating-knob joystick that maps 8 directional sectors to WASD. The controls work by writing into the same `keys` object that keyboard events use — the rest of the game code doesn't know the difference.
 
 `resizeCanvas()` subtracts the bar height from the canvas so game content never hides behind it.
+
+---
+
+## Theme System
+
+The game's entire visual style — canvas colors, fonts, rendering effects, and CSS custom properties — is driven by a data-driven theme system. Themes can be switched at runtime from the lobby settings panel with zero code changes to the engine.
+
+### How It Works
+
+```
+Theme file (e.g. retro-neon.js)
+  ↓ registers into
+ThemeRegistry (themes/index.js)
+  ↓ queried by
+ThemeManager (core/ThemeManager.js)
+  ↓ mutates at runtime
+CONFIG.COLORS        → all canvas rendering picks up new colors
+RENDER_CONFIG.FONTS  → all canvas text uses new fonts
+:root CSS vars       → all DOM/CSS UI updates
+canvas.style         → rendering hints (pixelated, etc.)
+localStorage         → persists selection across reloads
+CustomEvent          → game loop reacts (invalidates maze cache)
+```
+
+### Theme Structure
+
+Each theme is a plain JS object with this shape:
+
+```javascript
+const myTheme = {
+  id:        "my-theme",          // unique slug, used as registry key
+  label:     "My Theme",          // human-readable name shown in UI
+  colors:    { /* ~60 keys */ },  // canvas color tokens (keyed to CONFIG.COLORS)
+  fonts:     { canvas: { … } },  // font strings (keyed to RENDER_CONFIG.FONTS)
+  rendering: { … },              // glowEnabled, scanlines, pixelated, playerShape
+  sounds:    { … },              // all null for procedural audio (future: samples)
+  cssVars:   { /* --key: val */ } // injected into :root for DOM styling
+};
+```
+
+### Built-in Themes
+
+| Theme | File | Description |
+|---|---|---|
+| Retro Neon | `themes/retro-neon.js` | The original dark arcade neon palette |
+| Midnight Void | `themes/midnight-void.js` | Ultra-dark with indigo/cyan accents |
+| Sandstorm | `themes/sandstorm.js` | Warm light desert tones for daytime play |
+| Cyber Sakura | `themes/cyber-sakura.js` | Cyberpunk with cherry blossom pink and jade green |
+
+For a step-by-step guide on creating a new theme, see [adding-themes.md](adding-themes.md).
