@@ -66,6 +66,13 @@
   --card-hover-bg:      rgba(20,20,42,.9);
   --card-hover-border:  rgba(255,255,255,.12);
   --card-shimmer-color: rgba(255,255,255,.04);
+
+  /* Touch controls — overridden by light themes for visibility */
+  --touch-area-bg:        transparent;
+  --joystick-base-bg:     rgba(255,255,255,0.06);
+  --joystick-base-border: rgba(255,255,255,0.2);
+  --joystick-knob-bg:     rgba(255,255,255,0.55);
+  --joystick-knob-border: rgba(255,255,255,0.85);
 }
 
 /* ---- Reset ---- */
@@ -1119,29 +1126,82 @@ body.lobby-seen .maze-rotation-note {
     display: none !important;
   }
 
-  /* Lobby fills full viewport height; add bottom padding for fixed footer */
+  /* Lobby: vertically centers content between the fixed top buttons and footer */
   #lobby {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     min-height: 100svh;
-    padding: 1.2rem 1rem 4rem;
+    /* top: clear the fixed mute/settings buttons (40px + 12px top + gap) */
+    padding: 68px 1rem 5rem;
     width: 100%;
+    gap: 0;
   }
 
-  /* Hide site footer when game is active (JS also sets display:none; this covers
-     the rare case where JS hasn't run yet on mobile) */
+  h1 {
+    font-size: clamp(1.25rem, 7.5vw, 1.8rem);
+    letter-spacing: 3px;
+    margin-bottom: 0.2rem;
+    white-space: nowrap;
+  }
+
+  #lobby > header > p {
+    font-size: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  #maze-selector {
+    margin: 0.4rem 0 0.3rem;
+  }
+
+  #maze-selector h3 {
+    margin-bottom: 0.5rem;
+    font-size: 0.65rem;
+  }
+
+  .lobby-buttons {
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .lobby-buttons .btn {
+    padding: 0.65rem 1.5rem;
+    font-size: 0.85rem;
+  }
+
+  .maze-rotation-note {
+    font-size: 0.6rem;
+    margin-top: 0.4rem;
+  }
+
+  /* Always show footer on mobile (desktop JS hides it only on non-mobile) */
   #gameContainer:not([style*="none"]) ~ #site-footer {
-    display: none !important;
+    display: flex !important;
   }
 
-  /* Compact footer on mobile */
+  /* Compact unified footer on mobile — mirrors desktop but smaller */
   #site-footer {
-    padding: 0.35rem 1rem 0.45rem;
+    padding: 0.3rem 0.75rem 0.4rem;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
   }
 
   .footer-meta {
-    display: none;
+    display: flex;
+    font-size: 0.42rem;
+    letter-spacing: 1px;
+    opacity: 0.55;
+  }
+
+  .footer-links {
+    font-size: 0.52rem;
+    letter-spacing: 0.5px;
+  }
+
+  .footer-sep {
+    margin: 0 0.28rem;
   }
 
   /* Settings drawer slides from the top on mobile */
@@ -1182,7 +1242,7 @@ body.lobby-seen .maze-rotation-note {
     scroll-snap-type: x mandatory;
     justify-content: flex-start;
     max-width: 100vw;
-    padding: 1.2rem 20vw;
+    padding: 0.6rem 28vw 0.6rem 28vw;
     gap: 0.5rem;
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -1194,8 +1254,8 @@ body.lobby-seen .maze-rotation-note {
 
   .maze-card {
     flex-shrink: 0;
-    width: 60vw;
-    max-width: 280px;
+    width: 44vw;
+    max-width: 220px;
     scroll-snap-align: center;
     transform: scale(0.95);
     opacity: 0.9;
@@ -1218,11 +1278,16 @@ body.lobby-seen .maze-rotation-note {
   }
 
   /* Game container stacks canvas + touch bar vertically.
-     display is controlled by JS (show/hide); only override layout here. */
+     display is controlled by JS (show/hide); only override layout here.
+     flex: 1 makes it fill the full viewport so --touch-area-bg covers
+     the entire area below the canvas with no gap before the footer. */
   #gameContainer {
     flex-direction: column;
     align-items: center;
     padding: 0.25rem 0 0;
+    flex: 1;
+    min-height: 0;
+    background: var(--touch-area-bg);
   }
 
   /* Author credit shown at the bottom during gameplay */
@@ -1307,8 +1372,8 @@ body.lobby-seen .maze-rotation-note {
     width: 130px;
     height: 130px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.06);
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    background: var(--joystick-base-bg);
+    border: 2px solid var(--joystick-base-border);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1319,8 +1384,8 @@ body.lobby-seen .maze-rotation-note {
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.55);
-    border: 2px solid rgba(255, 255, 255, 0.85);
+    background: var(--joystick-knob-bg);
+    border: 2px solid var(--joystick-knob-border);
     pointer-events: none;
     transform: translate(0px, 0px);
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);

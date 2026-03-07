@@ -235,5 +235,12 @@ const retroNeonTheme = {
     "--card-hover-bg":      "rgba(20,20,42,.9)",
     "--card-hover-border":  "rgba(255,255,255,.12)",
     "--card-shimmer-color": "rgba(255,255,255,.04)",
+
+    /* Touch controls */
+    "--touch-area-bg":        "transparent",
+    "--joystick-base-bg":     "rgba(255,255,255,0.06)",
+    "--joystick-base-border": "rgba(255,255,255,0.2)",
+    "--joystick-knob-bg":     "rgba(255,255,255,0.55)",
+    "--joystick-knob-border": "rgba(255,255,255,0.85)",
   },
 };

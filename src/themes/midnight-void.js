@@ -195,5 +195,12 @@ const midnightVoidTheme = {
     "--card-hover-bg":      "rgba(16,16,46,.92)",
     "--card-hover-border":  "rgba(123,92,255,.22)",
     "--card-shimmer-color": "rgba(123,92,255,.06)",
+
+    /* Touch controls */
+    "--touch-area-bg":        "transparent",
+    "--joystick-base-bg":     "rgba(255,255,255,0.06)",
+    "--joystick-base-border": "rgba(255,255,255,0.2)",
+    "--joystick-knob-bg":     "rgba(255,255,255,0.55)",
+    "--joystick-knob-border": "rgba(255,255,255,0.85)",
   },
 };
