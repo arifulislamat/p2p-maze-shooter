@@ -35,31 +35,31 @@ All messages are JSON objects sent over the DataChannel.
 
 ### High frequency (60 Hz)
 
-| Type | Direction | What it contains |
-|---|---|---|
-| `input` | guest → host | Guest's current key state (`up`, `down`, `left`, `right`, `shoot`) |
+| Type         | Direction    | What it contains                                                                      |
+| ------------ | ------------ | ------------------------------------------------------------------------------------- |
+| `input`      | guest → host | Guest's current key state (`up`, `down`, `left`, `right`, `shoot`)                    |
 | `host_input` | host → guest | Host's key state + authoritative P1 and P2 positions, directions, and a `seq` counter |
 
 The guest drops any `host_input` packet whose `seq` is not greater than the last seen sequence number. This discards out-of-order packets (common with unreliable delivery).
 
 ### Authority corrections (10 Hz)
 
-| Type | Direction | What it contains |
-|---|---|---|
+| Type         | Direction    | What it contains                                                                                                                                 |
+| ------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `correction` | host → guest | Both players' health/score/alive, positions, bombs, zombies, health packs, explosions, weapon pickups, speed boosts, game state, countdown value |
 
 The guest snaps authority state (health, score, alive, game state) immediately. Positions are redundant with `host_input` but included so the 10 Hz correction can fill gaps.
 
 ### One-time / critical messages
 
-| Type | Direction | What it contains |
-|---|---|---|
-| `ready` | guest → host | Signals the DataChannel is open and the guest's handler is wired |
-| `config` | host → guest | Selected maze key and maze order; triggers `startOnlineGame()` on guest |
-| `resync` | host → guest | Maze key, maze order, mazes played, match start time, maze rotation start — used for mid-game rejoins without resetting scores |
-| `state` | host → guest | Full entity snapshot: both players, all bullets, bombs, zombies, health packs, pickups, scores, sounds |
-| `restart_request` | host → guest | Tells the guest to restart the match |
-| `sounds` | host → guest | Batched sound events for the guest to play locally (included in `state`) |
+| Type              | Direction    | What it contains                                                                                                               |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `ready`           | guest → host | Signals the DataChannel is open and the guest's handler is wired                                                               |
+| `config`          | host → guest | Selected maze key and maze order; triggers `startOnlineGame()` on guest                                                        |
+| `resync`          | host → guest | Maze key, maze order, mazes played, match start time, maze rotation start — used for mid-game rejoins without resetting scores |
+| `state`           | host → guest | Full entity snapshot: both players, all bullets, bombs, zombies, health packs, pickups, scores, sounds                         |
+| `restart_request` | host → guest | Tells the guest to restart the match                                                                                           |
+| `sounds`          | host → guest | Batched sound events for the guest to play locally (included in `state`)                                                       |
 
 ---
 

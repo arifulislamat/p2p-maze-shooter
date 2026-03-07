@@ -171,18 +171,18 @@ The **host** runs the authoritative simulation (physics, collisions, spawning) a
 
 ## Game Rules
 
-| Rule               | Detail                                                                |
-| ------------------ | --------------------------------------------------------------------- |
-| **Match duration** | 6 maps × 1 min = 6 minutes total                                      |
-| **Instant win**    | First to 8 kills wins immediately                                     |
-| **Timeout win**    | After 6 minutes, highest kill count wins                              |
-| **Tiebreaker**     | If kills are equal, higher health wins; otherwise it's a draw         |
-| **Respawn**        | 3-second respawn timer after death                                    |
-| **Bombs**          | Spawn dynamically (cap ramps 3→4), heartbeat fuse, area blast damage  |
-| **Zombies**        | Roam the maze, freeze players for 3 seconds on contact                |
-| **Health packs**   | Spawn periodically, restore 3 HP on pickup                            |
+| Rule               | Detail                                                               |
+| ------------------ | -------------------------------------------------------------------- |
+| **Match duration** | 6 maps × 1 min = 6 minutes total                                     |
+| **Instant win**    | First to 8 kills wins immediately                                    |
+| **Timeout win**    | After 6 minutes, highest kill count wins                             |
+| **Tiebreaker**     | If kills are equal, higher health wins; otherwise it's a draw        |
+| **Respawn**        | 3-second respawn timer after death                                   |
+| **Bombs**          | Spawn dynamically (cap ramps 3→4), heartbeat fuse, area blast damage |
+| **Zombies**        | Roam the maze, freeze players for 3 seconds on contact               |
+| **Health packs**   | Spawn periodically, restore 3 HP on pickup                           |
 | **Speed boosts**   | 4-second 1.6× speed multiplier                                       |
-| **Weapon pickups** | Rapid-fire (faster shots) or scatter (3-bullet spread) for 5 seconds  |
+| **Weapon pickups** | Rapid-fire (faster shots) or scatter (3-bullet spread) for 5 seconds |
 
 ## Tech Stack
 
@@ -196,13 +196,13 @@ The **host** runs the authoritative simulation (physics, collisions, spawning) a
 
 ## Documentation
 
-| Guide | Description |
-|---|---|
-| [Architecture](docs/architecture.md) | File structure, game loop, state machine, networking model |
-| [Adding Themes](docs/adding-themes.md) | Step-by-step guide to creating a new visual theme |
-| [Adding Maps](docs/adding-maps.md) | How to add a new maze arena |
-| [Config Tuning](docs/config-tuning.md) | Every gameplay constant explained |
-| [Networking](docs/networking.md) | P2P protocol, message types, reconnection |
+| Guide                                  | Description                                                |
+| -------------------------------------- | ---------------------------------------------------------- |
+| [Architecture](docs/architecture.md)   | File structure, game loop, state machine, networking model |
+| [Adding Themes](docs/adding-themes.md) | Step-by-step guide to creating a new visual theme          |
+| [Adding Maps](docs/adding-maps.md)     | How to add a new maze arena                                |
+| [Config Tuning](docs/config-tuning.md) | Every gameplay constant explained                          |
+| [Networking](docs/networking.md)       | P2P protocol, message types, reconnection                  |
 
 ## Contributing
 

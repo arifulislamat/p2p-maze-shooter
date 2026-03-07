@@ -30,20 +30,20 @@ Each file is an IIFE (or plain global object) that exposes a single global. Ther
 
 ## What Each File Does
 
-| File | Global | Responsibility |
-|---|---|---|
-| `themes/retro-neon.js` | `retroNeonTheme` | Built-in default theme definition (colors, fonts, rendering, CSS vars). |
-| `themes/midnight-void.js` | `midnightVoidTheme` | Midnight Void theme — ultra-dark with indigo/cyan accents. |
-| `themes/sandstorm.js` | `sandstormTheme` | Sandstorm theme — warm desert tones for daytime play. |
-| `themes/cyber-sakura.js` | `cyberSakuraTheme` | Cyber Sakura theme — cyberpunk with cherry blossom pink. |
-| `themes/index.js` | `ThemeRegistry` | Theme registry. Holds all registered themes keyed by `id`, declares `defaultTheme`. |
-| `core/ThemeManager.js` | `ThemeManager` | Runtime theme switcher. Mutates `CONFIG.COLORS` and `RENDER_CONFIG.FONTS` in-place, injects CSS vars, dispatches `themechange` event. |
-| `constants.js` | `CONFIG` | All gameplay tuning values and maze data. Also exports flat aliases (`PLAYER_SPEED`, `COLORS`, etc.) used everywhere else. |
-| `sound.js` | `Sound` | Procedural audio via Web Audio API. Zero sound files — every effect is synthesized. |
-| `physics.js` | `Physics` | AABB wall collision and bounds clamping. Reads `activeMaze.walls`. |
-| `renderer.js` | `Renderer` | All Canvas 2D drawing — maze, players, HUD, effects, overlays. Reads `activeMaze.grid` and `COLORS`. |
-| `network.js` | `Network` | PeerJS (WebRTC) wrapper. Manages peer lifecycle, room codes, reconnect logic, and reliable-over-unreliable messaging. |
-| `game.js` | `Game` | The entire game loop — state machine, input, entity spawning, physics ticks, network sends, UI wiring. |
+| File                      | Global              | Responsibility                                                                                                                        |
+| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `themes/retro-neon.js`    | `retroNeonTheme`    | Built-in default theme definition (colors, fonts, rendering, CSS vars).                                                               |
+| `themes/midnight-void.js` | `midnightVoidTheme` | Midnight Void theme — ultra-dark with indigo/cyan accents.                                                                            |
+| `themes/sandstorm.js`     | `sandstormTheme`    | Sandstorm theme — warm desert tones for daytime play.                                                                                 |
+| `themes/cyber-sakura.js`  | `cyberSakuraTheme`  | Cyber Sakura theme — cyberpunk with cherry blossom pink.                                                                              |
+| `themes/index.js`         | `ThemeRegistry`     | Theme registry. Holds all registered themes keyed by `id`, declares `defaultTheme`.                                                   |
+| `core/ThemeManager.js`    | `ThemeManager`      | Runtime theme switcher. Mutates `CONFIG.COLORS` and `RENDER_CONFIG.FONTS` in-place, injects CSS vars, dispatches `themechange` event. |
+| `constants.js`            | `CONFIG`            | All gameplay tuning values and maze data. Also exports flat aliases (`PLAYER_SPEED`, `COLORS`, etc.) used everywhere else.            |
+| `sound.js`                | `Sound`             | Procedural audio via Web Audio API. Zero sound files — every effect is synthesized.                                                   |
+| `physics.js`              | `Physics`           | AABB wall collision and bounds clamping. Reads `activeMaze.walls`.                                                                    |
+| `renderer.js`             | `Renderer`          | All Canvas 2D drawing — maze, players, HUD, effects, overlays. Reads `activeMaze.grid` and `COLORS`.                                  |
+| `network.js`              | `Network`           | PeerJS (WebRTC) wrapper. Manages peer lifecycle, room codes, reconnect logic, and reliable-over-unreliable messaging.                 |
+| `game.js`                 | `Game`              | The entire game loop — state machine, input, entity spawning, physics ticks, network sends, UI wiring.                                |
 
 ---
 
@@ -100,16 +100,19 @@ LOBBY
 One player is the **host** and one is the **guest**. The host runs the full simulation. The guest is a "dumb terminal" — it displays whatever the host sends.
 
 **What the host sends:**
+
 - **60 Hz** — `host_input`: P1 and P2 positions + host's key state
 - **10 Hz** — `correction`: health, scores, bombs, zombies, health packs, explosions, game state
 - **On connect/reconnect** — `broadcastState`: full entity snapshot
 
 **What the guest sends:**
+
 - **60 Hz** — `input`: its WASD + Space key state
 
 **On the guest side:**
+
 - P1 and P2 positions come directly from `hostP1State` / `hostP2State` (no local prediction, no lerp)
-- Guest handles its own bullet *creation* locally for responsiveness; position truth always comes from host
+- Guest handles its own bullet _creation_ locally for responsiveness; position truth always comes from host
 - Authority state (health, score, alive) is snapped from corrections immediately
 
 ---
@@ -173,11 +176,11 @@ const myTheme = {
 
 ### Built-in Themes
 
-| Theme | File | Description |
-|---|---|---|
-| Retro Neon | `themes/retro-neon.js` | The original dark arcade neon palette |
-| Midnight Void | `themes/midnight-void.js` | Ultra-dark with indigo/cyan accents |
-| Sandstorm | `themes/sandstorm.js` | Warm light desert tones for daytime play |
-| Cyber Sakura | `themes/cyber-sakura.js` | Cyberpunk with cherry blossom pink and jade green |
+| Theme         | File                      | Description                                       |
+| ------------- | ------------------------- | ------------------------------------------------- |
+| Retro Neon    | `themes/retro-neon.js`    | The original dark arcade neon palette             |
+| Midnight Void | `themes/midnight-void.js` | Ultra-dark with indigo/cyan accents               |
+| Sandstorm     | `themes/sandstorm.js`     | Warm light desert tones for daytime play          |
+| Cyber Sakura  | `themes/cyber-sakura.js`  | Cyberpunk with cherry blossom pink and jade green |
 
 For a step-by-step guide on creating a new theme, see [adding-themes.md](adding-themes.md).

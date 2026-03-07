@@ -41,8 +41,8 @@ At the top of your new file, change the variable name and the `id`/`label`:
 
 ```javascript
 const myTheme = {
-  id:    "my-theme",     // unique slug — used as the registry key and localStorage value
-  label: "My Theme",     // human-readable name shown in the theme selector UI
+  id: "my-theme", // unique slug — used as the registry key and localStorage value
+  label: "My Theme", // human-readable name shown in the theme selector UI
   // …
 };
 ```
@@ -276,11 +276,11 @@ Open `src/themes/index.js` and add your theme to the `themes` object:
 ```javascript
 const ThemeRegistry = {
   themes: {
-    [retroNeonTheme.id]:    retroNeonTheme,
+    [retroNeonTheme.id]: retroNeonTheme,
     [midnightVoidTheme.id]: midnightVoidTheme,
-    [sandstormTheme.id]:    sandstormTheme,
-    [cyberSakuraTheme.id]:  cyberSakuraTheme,
-    [myTheme.id]:           myTheme,           // ← add this line
+    [sandstormTheme.id]: sandstormTheme,
+    [cyberSakuraTheme.id]: cyberSakuraTheme,
+    [myTheme.id]: myTheme, // ← add this line
   },
   defaultTheme: "sandstorm",
 };
@@ -295,7 +295,8 @@ Open `src/index.html` and add a `<script>` tag for your theme file **before** `t
 <script src="themes/midnight-void.js"></script>
 <script src="themes/sandstorm.js"></script>
 <script src="themes/cyber-sakura.js"></script>
-<script src="themes/my-theme.js"></script>      <!-- ← add this line -->
+<script src="themes/my-theme.js"></script>
+<!-- ← add this line -->
 <script src="themes/index.js"></script>
 <script src="core/ThemeManager.js"></script>
 ```
@@ -320,11 +321,11 @@ Open `src/index.html` in a browser. Your theme should appear in the settings pan
 
 After adding a theme, you'll have touched exactly **3 files**:
 
-| File | Change |
-|---|---|
-| `src/themes/my-theme.js` | New file — your theme definition |
-| `src/themes/index.js` | One line — register the theme |
-| `src/index.html` | One line — add the `<script>` tag |
+| File                     | Change                            |
+| ------------------------ | --------------------------------- |
+| `src/themes/my-theme.js` | New file — your theme definition  |
+| `src/themes/index.js`    | One line — register the theme     |
+| `src/index.html`         | One line — add the `<script>` tag |
 
 No changes to `renderer.js`, `game.js`, `constants.js`, or any other engine file.
 
@@ -334,12 +335,12 @@ No changes to `renderer.js`, `game.js`, `constants.js`, or any other engine file
 
 **Start from an existing theme.** Don't write a theme from scratch. Copy whichever built-in theme is closest to your desired look:
 
-| If you want… | Start from |
-|---|---|
-| Dark neon aesthetic | `retro-neon.js` |
-| Ultra-dark minimalist | `midnight-void.js` |
-| Light / warm palette | `sandstorm.js` |
-| Colorful / distinctive accents | `cyber-sakura.js` |
+| If you want…                   | Start from         |
+| ------------------------------ | ------------------ |
+| Dark neon aesthetic            | `retro-neon.js`    |
+| Ultra-dark minimalist          | `midnight-void.js` |
+| Light / warm palette           | `sandstorm.js`     |
+| Colorful / distinctive accents | `cyber-sakura.js`  |
 
 **Ensure sufficient contrast.** Players, bullets, and zombies must be clearly distinguishable from the background and from each other. Test on both your monitor and a mobile screen.
 
