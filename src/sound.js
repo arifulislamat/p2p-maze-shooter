@@ -101,6 +101,8 @@ const Sound = (() => {
     muted = !muted;
     localStorage.setItem("p2p-muted", muted);
     updateMuteButton();
+    // Keep remote voice audio in sync with game mute state
+    if (typeof Voice !== "undefined") Voice.syncMuteState();
   }
 
   function isMuted() {

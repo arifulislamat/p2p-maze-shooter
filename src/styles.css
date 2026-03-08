@@ -1113,6 +1113,73 @@ body.lobby-seen .maze-rotation-note {
   transform: scale(1.05);
 }
 
+/* ---- Voice Chat Settings Row ---- */
+.settings-voice-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 0.9rem;
+}
+
+.settings-voice-label {
+  margin-bottom: 0 !important;
+}
+
+#micBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-dark);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+  user-select: none;
+  white-space: nowrap;
+}
+
+#micBtn:hover {
+  border-color: var(--accent);
+  background: var(--bg-panel);
+}
+
+#micBtn.voice-active {
+  border-color: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.35);
+}
+
+.mic-btn-label {
+  font-size: 0.62rem;
+  letter-spacing: 1.5px;
+}
+
+/* ---- Voice Toast Notification ---- */
+.voice-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dark);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.7rem;
+  padding: 0.6rem 1.2rem;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.95;
+  white-space: nowrap;
+}
+
 /* ================ Mobile Touch Controls ================ */
 #touch-controls {
   display: none; /* hidden by default; shown by portrait media query */

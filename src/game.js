@@ -1378,6 +1378,22 @@ const Game = (() => {
       return;
     }
 
+    // Host/guest voice-chat signaling
+    if (data.type === "voice_request" && typeof Voice !== "undefined") {
+      if (gameMode === "online-host") {
+        Voice.startCall(Network.getPeer(), Network.getConnection().peer);
+      } else {
+        Voice.listenForCall(Network.getPeer());
+      }
+      return;
+    }
+
+    // Peer's mic toggle state — update our HUD icon
+    if (data.type === "voice_state" && typeof Voice !== "undefined") {
+      Voice.setRemoteMicEnabled(data.enabled);
+      return;
+    }
+
     // Guest asked host to restart (joystick spin gesture)
     if (data.type === "restart_request" && gameMode === "online-host" && gameState === STATE.GAME_OVER) {
       restartGame();
@@ -1449,6 +1465,7 @@ const Game = (() => {
 
   function handleDisconnect() {
     if (isDisconnected || isReconnecting) return;
+    if (typeof Voice !== "undefined") Voice.cleanup();
 
     // During active online play, try to reconnect before giving up
     if (gameMode === "online-host" || gameMode === "online-guest") {
@@ -1498,6 +1515,14 @@ const Game = (() => {
       onConnected: () => {
         console.log("[Game] Reconnect successful!");
         stopReconnecting();
+        // Re-establish voice channel after reconnection
+        if (typeof Voice !== "undefined") {
+          if (gameMode === "online-host") {
+            Voice.startCall(Network.getPeer(), Network.getConnection().peer);
+          } else {
+            Voice.listenForCall(Network.getPeer());
+          }
+        }
         // Re-send resync so guest can restore maze state without resetting match
         if (gameMode === "online-host") {
           Network.sendReliable({
@@ -1635,6 +1660,7 @@ const Game = (() => {
     clearSession();
     pendingResumeState = null;
     stopReconnecting();
+    if (typeof Voice !== "undefined") Voice.cleanup();
     Network.disconnect();
     gameMode = "lobby";
     gameState = STATE.LOBBY;
@@ -1744,6 +1770,9 @@ const Game = (() => {
             document.getElementById("connectionStatus").textContent = "Starting game...";
             setTimeout(() => {
               startOnlineGame(true);
+              if (typeof Voice !== "undefined") {
+                Voice.startCall(Network.getPeer(), Network.getConnection().peer);
+              }
               Network.sendReliable({
                 type: "config",
                 mazeKey: selectedMazeKey,
@@ -1915,6 +1944,10 @@ const Game = (() => {
         document.getElementById("joinStatus").className = "status-connected";
         // Tell host we're ready to receive
         Network.sendReliable({ type: "ready" });
+        if (typeof Voice !== "undefined") {
+          Voice.listenForCall(Network.getPeer());
+          Network.send({ type: "voice_request" });
+        }
       },
       onData: handleNetworkData,
       onDisconnected: handleDisconnect,
@@ -1928,6 +1961,7 @@ const Game = (() => {
   function cancelOnline() {
     clearSession();
     pendingResumeState = null;
+    if (typeof Voice !== "undefined") Voice.cleanup();
     Network.disconnect();
     document.getElementById("connectionUI").style.display = "none";
     document.getElementById("hostUI").style.display = "none";
@@ -2107,7 +2141,21 @@ const Game = (() => {
       const matchElapsed = (Date.now() - matchStartTime) / 1000;
       matchTimeLeft = Math.max(0, totalMatchTime - matchElapsed);
     }
-    Renderer.drawHUD(p1, p2, mazeTimeLeft, matchTimeLeft, mazesPlayed);
+    let voiceInfo = null;
+    if (typeof Voice !== "undefined" && (gameMode === "online-host" || gameMode === "online-guest")) {
+      if (gameMode === "online-host") {
+        voiceInfo = {
+          p1: { enabled: Voice.isEnabled(),           level: Voice.getLocalLevel()  },
+          p2: { enabled: Voice.getRemoteMicEnabled(), level: Voice.getRemoteLevel() },
+        };
+      } else {
+        voiceInfo = {
+          p1: { enabled: Voice.getRemoteMicEnabled(), level: Voice.getRemoteLevel() },
+          p2: { enabled: Voice.isEnabled(),           level: Voice.getLocalLevel()  },
+        };
+      }
+    }
+    Renderer.drawHUD(p1, p2, mazeTimeLeft, matchTimeLeft, mazesPlayed, voiceInfo);
 
     // --- Maze urgency: tick sound + screen shake in last URGENT_MAZE_TIME_S seconds ---
     if (gameState === STATE.PLAYING && mazeTimeLeft > 0 && mazeTimeLeft <= URGENT_MAZE_TIME_S) {
@@ -2532,6 +2580,10 @@ const Game = (() => {
     lastHostInputSeq = 0;
     lastTime = performance.now();
     physicsAccumulator = 0;
+    // Broadcast our mic state so the peer's HUD icon shows our correct state from the start
+    if (typeof Voice !== "undefined" && Network.isConnected()) {
+      Network.send({ type: "voice_state", enabled: Voice.isEnabled() });
+    }
     requestAnimationFrame(gameLoop);
   }
 

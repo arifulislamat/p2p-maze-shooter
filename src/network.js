@@ -536,6 +536,16 @@ const Network = (() => {
     return connected && conn && conn.open;
   }
 
+  // Expose the PeerJS Peer instance so Voice can make / receive media calls.
+  function getPeer() {
+    return peer;
+  }
+
+  // Expose the active DataConnection so Voice can read the remote peer ID.
+  function getConnection() {
+    return conn;
+  }
+
   function getLastRoomCode() {
     return lastRoomCode;
   }
@@ -564,5 +574,7 @@ const Network = (() => {
     getLastRoomCode,
     setLastRoomCode,
     generateRoomCode,
+    getPeer,
+    getConnection,
   };
 })();
