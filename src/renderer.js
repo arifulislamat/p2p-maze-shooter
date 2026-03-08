@@ -351,8 +351,77 @@ const Renderer = (() => {
     });
   }
 
+  // ---- Voice HUD Indicator ----
+  function drawVoiceIndicator(cx, enabled, level, color) {
+    const iconW = 9, iconH = 18; // Slimmer mic: width 9px
+    const barW = 4, barGap = 2, barCount = 4;
+    const waveAreaH = 18; // Fixed area for bars
+    const barMaxH = waveAreaH; // Allow bars to fill area
+    const innerGap = 3;
+    // Stack: mic at top, wave below, all inside HUD
+    const hudY = RENDER_CONFIG.HUD.PADDING_Y;
+    const iconTop = hudY + 2;
+    const micCY = iconTop + iconH / 2;
+    const iconX = cx - iconW / 2;
+    const capH = iconH * 0.55;
+    const waveAreaTop = iconTop + iconH + innerGap;
+    const waveAreaCY = waveAreaTop + waveAreaH / 2;
+
+    ctx.save();
+    ctx.fillStyle   = color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 2;
+    ctx.globalAlpha = enabled ? 0.9 : 0.3;
+
+    // capsule body
+    ctx.beginPath();
+    ctx.roundRect(iconX, iconTop, iconW, capH, 2.5);
+    ctx.fill();
+
+    // arc (open end faces down)
+    ctx.beginPath();
+    ctx.arc(cx, iconTop + capH * 0.85, iconW * 0.62, 0, Math.PI);
+    ctx.stroke();
+
+    // stem + base line
+    ctx.beginPath();
+    ctx.moveTo(cx, iconTop + capH * 0.85 + iconW * 0.62);
+    ctx.lineTo(cx, iconTop + iconH - 1);
+    ctx.moveTo(iconX,         iconTop + iconH - 1);
+    ctx.lineTo(iconX + iconW, iconTop + iconH - 1);
+    ctx.stroke();
+
+    // diagonal slash when mic is off
+    if (!enabled) {
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(iconX - 1,         iconTop - 1);
+      ctx.lineTo(iconX + iconW + 1, iconTop + iconH + 1);
+      ctx.stroke();
+    }
+
+    // spectrum bars: always centered in fixed area
+    if (enabled) {
+      const totalBarsW = barCount * barW + (barCount - 1) * barGap;
+      const barsStartX = cx - totalBarsW / 2;
+      const eff = Math.max(0.08, Math.min(1, level)); // Clamp to [0.08, 1]
+      const now = Date.now();
+      for (let i = 0; i < barCount; i++) {
+        const phase = (now / (130 + i * 55)) * Math.PI * 2;
+        const h = Math.max(3, barMaxH * eff * (0.5 + 0.5 * Math.sin(phase)));
+        // Center each bar vertically in the wave area
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(barsStartX + i * (barW + barGap), waveAreaCY - h / 2, barW, h);
+      }
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   // ---- HUD (Top Bar) ----
-  function drawHUD(p1, p2, mazeTimeLeft, matchTimeLeft, mazesPlayed) {
+  function drawHUD(p1, p2, mazeTimeLeft, matchTimeLeft, mazesPlayed, voiceInfo) {
     // Semi-transparent HUD background
     ctx.fillStyle = COLORS.overlayHudBg;
     ctx.fillRect(0, 0, CANVAS_WIDTH, RENDER_CONFIG.HUD.HEIGHT);
@@ -425,6 +494,14 @@ const Renderer = (() => {
         CANVAS_WIDTH / 2,
         hudY + 36,
       );
+    }
+
+    // Voice indicators — stacked mic + bars, placed just outside each health bar
+    if (voiceInfo) {
+      const vcx1 = 20 + RENDER_CONFIG.HUD.HEALTH_WIDTH + 40;
+      const vcx2 = CANVAS_WIDTH - 20 - RENDER_CONFIG.HUD.HEALTH_WIDTH - 40;
+      drawVoiceIndicator(vcx1, voiceInfo.p1.enabled, voiceInfo.p1.level, COLORS.p1);
+      drawVoiceIndicator(vcx2, voiceInfo.p2.enabled, voiceInfo.p2.level, COLORS.p2);
     }
   }
 
